@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <!-- 
+      We just include the component.
+      The logic inside net-deck.html will automatically 
+      find the data from the _index.md section.
+    -->
+    {% include "components/net-deck.html" %}
+{% endblock content %}

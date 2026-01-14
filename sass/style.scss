@@ -1,0 +1,32 @@
+/* sass/style.scss */
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap');
+
+/* 1. Reset */
+* { box-sizing: border-box; }
+
+html, body {
+    height: 100%; /* Ensure full height is available */
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: #050505;
+    
+    /* FIX 1: Flex container that fills the window */
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+    
+    /* FIX 2: Standard auto scroll (shows bars ONLY when needed) */
+    overflow: auto;
+    
+    font-family: 'Share Tech Mono', monospace;
+    user-select: none;
+    
+    /* Optional: Padding gives the deck some breathing room */
+    padding: 20px;
+}
+
+/* 2. Import Components */
+@import "components/net-deck";
