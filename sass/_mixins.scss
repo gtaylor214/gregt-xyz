@@ -1,0 +1,75 @@
+/* 3D ENGINE MIXINS */
+
+// 1. The Camera Container
+@mixin scene($perspective: 1000px) {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  perspective: $perspective;
+  overflow: hidden;
+  
+  // Interaction Styles
+  cursor: grab;
+  touch-action: none; // Disables mobile scrolling so we can drag the scene
+  user-select: none;  // Prevents highlighting text while dragging
+  
+  &:active { cursor: grabbing; }
+}
+
+// 2. The Pivot (The center of the world)
+@mixin pivot-point() {
+  position: relative;
+  transform-style: preserve-3d;
+  width: 0; 
+  height: 0;
+  // Transition is optional, but adds smoothness if you change angles programmatically
+  // transition: transform 0.1s linear; 
+}
+
+// 3. The Cuboid Generator
+// Expects --w, --h, --d CSS variables on the HTML element
+@mixin cuboid() {
+  position: absolute;
+  transform-style: preserve-3d;
+  
+  // Dimensions
+  width: var(--w); 
+  height: var(--h);
+  
+  // Centering Logic (Center pivot point)
+  left: 50%; 
+  top: 50%;
+  margin-left: calc(var(--w) / -2);
+  margin-top: calc(var(--h) / -2);
+  
+  // World Positioning
+  // Defaults to 0 if not provided
+  transform: 
+    translate3d(var(--x, 0), var(--y, 0), var(--z, 0))
+    rotateX(var(--rx, 0deg))
+    rotateY(var(--ry, 0deg))
+    rotateZ(var(--rz, 0deg));
+
+  // Generic Face Styling
+  .face {
+    position: absolute;
+    width: 100%; 
+    height: 100%;
+    display: flex; 
+    justify-content: center; 
+    align-items: center;
+    backface-visibility: inherit; 
+    box-sizing: border-box;
+  }
+
+  // The 3D Folding Logic (Standard Box Mapping)
+  // We calculate positions based on the dimensions provided
+  .front  { transform: translateZ(calc(var(--d) / 2)); }
+  .back   { transform: rotateY(180deg) translateZ(calc(var(--d) / 2)); }
+  .right  { width: var(--d); left: calc((var(--w) - var(--d)) / 2); transform: rotateY(90deg) translateZ(calc(var(--w) / 2)); }
+  .left   { width: var(--d); left: calc((var(--w) - var(--d)) / 2); transform: rotateY(-90deg) translateZ(calc(var(--w) / 2)); }
+  .top    { height: var(--d); top: calc((var(--h) - var(--d)) / 2); transform: rotateX(90deg) translateZ(calc(var(--h) / 2)); }
+  .bottom { height: var(--d); top: calc((var(--h) - var(--d)) / 2); transform: rotateX(-90deg) translateZ(calc(var(--h) / 2)); }
+}

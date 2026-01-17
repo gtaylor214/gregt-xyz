@@ -1,10 +1,72 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Modular 3D Scene</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
 
-{% block content %}
-    <!-- 
-      We just include the component.
-      The logic inside net-deck.html will automatically 
-      find the data from the _index.md section.
-    -->
-    {% include "components/net-deck.html" %}
-{% endblock content %}
+    <!-- 1. The Input Container -->
+    <div class="scene-container" id="scene">
+        
+        <!-- 2. The Rotatable World -->
+        <div class="pivot" id="pivot">
+            
+            <!-- A. Reference Floor -->
+            <div class="floor"></div>
+
+            <!-- B. The Console (Center) -->
+            <div class="console-unit" 
+                 style="--w: 200px; --h: 150px; --d: 150px; --y: 75px;">
+                <div class="face front">
+                    <span style="color: #0f0">> BOOTING...</span>
+                </div>
+                <div class="face back"></div>
+                <div class="face right"></div>
+                <div class="face left"></div>
+                <div class="face top"></div>
+                <div class="face bottom"></div>
+            </div>
+
+            <!-- C. A Floating Crate (Left) -->
+            <div class="crate" 
+                 style="--w: 80px; --h: 80px; --d: 80px; --x: -200px; --y: 100px; --ry: 15deg;">
+                <div class="face front">LOOT</div>
+                <div class="face back"></div>
+                <div class="face right"></div>
+                <div class="face left"></div>
+                <div class="face top"></div>
+                <div class="face bottom"></div>
+            </div>
+
+            <!-- D. A Tall Debug Pillar (Right) -->
+            <div class="cube-debug" 
+                 style="--w: 40px; --h: 200px; --d: 40px; --x: 200px; --y: 0px;">
+                <div class="face front"></div>
+                <div class="face back"></div>
+                <div class="face right"></div>
+                <div class="face left"></div>
+                <div class="face top"></div>
+                <div class="face bottom"></div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- 3. Initialize Controls -->
+    <script type="module">
+        import { OrbitControls } from '/js/orbit.js';
+        
+        new OrbitControls({
+            container: '#scene',  // Capture mouse here
+            pivot: '#pivot',      // Rotate this
+            sensitivity: 0.5,     // Speed
+            initialX: -20,        // Look down slightly
+            initialY: 45          // Angled view
+        });
+    </script>
+
+</body>
+</html>
