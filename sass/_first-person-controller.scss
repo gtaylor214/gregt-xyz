@@ -1,4 +1,4 @@
-/* Global Mobile Reset: Prevents "pull to refresh" and zooming */
+/* Global Mobile Reset */
 html, body {
     overscroll-behavior: none;
     touch-action: none;
@@ -7,8 +7,7 @@ html, body {
 .fpc-viewport {
     width: 100vw; 
     height: 100vh;
-    /* Mobile viewport fix for URL bars */
-    height: 100dvh; 
+    height: 100dvh; /* Mobile URL bar fix */
     overflow: hidden;
     position: relative;
     user-select: none;
@@ -44,7 +43,7 @@ html, body {
 .ui-layer {
     position: fixed;
     width: 100%; height: 100%;
-    pointer-events: none; /* Touches pass through to scene */
+    pointer-events: none;
     z-index: 10;
     color: white;
     padding: 20px;
@@ -59,28 +58,9 @@ html, body {
     text-shadow: 1px 1px 0 #000;
 }
 
-/* Generic UI Button (Fullscreen, etc) */
-.ui-btn {
-    pointer-events: auto; /* Re-enable clicking */
-    background: rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    color: white;
-    padding: 6px 12px;
-    margin-top: 8px;
-    font-family: inherit;
-    font-size: 12px;
-    cursor: pointer;
-    text-transform: uppercase;
-    transition: background 0.2s;
-}
-
-.ui-btn:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
-
 /* --- Mobile Controls --- */
 
-/* Visual Joystick Knobs */
+/* Shared Joystick Style */
 .joystick-knob {
     position: absolute;
     width: 40px; height: 40px;
@@ -95,7 +75,7 @@ html, body {
     will-change: top, left, transform;
 }
 
-/* Jump Button (Mobile Only) */
+/* Jump Button */
 .mobile-jump-btn {
     position: absolute;
     bottom: 30px; right: 30px;
@@ -108,7 +88,7 @@ html, body {
     display: flex; align-items: center; justify-content: center;
     user-select: none;
     z-index: 100;
-    pointer-events: auto;
+    pointer-events: auto; /* Clickable */
     display: none; 
 }
 
@@ -116,6 +96,7 @@ html, body {
     background: rgba(255, 255, 255, 0.4);
 }
 
+/* Only show mobile controls on touch devices */
 @media (hover: none) and (pointer: coarse) {
     .mobile-jump-btn { display: flex; }
 }

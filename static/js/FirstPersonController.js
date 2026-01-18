@@ -13,28 +13,30 @@ export class FirstPersonController {
         // Input State
         this.keys = { w:false, a:false, s:false, d:false, space:false };
         
-        // Mobile Sticks (Symmetrical Logic)
+        // Mobile State
+        this.lastTapTime = 0; // For double-tap detection
+        
+        // Left Stick (Move)
         this.stickLeft = { 
             active: false, id: null, 
             startX: 0, startY: 0, 
             vectorX: 0, vectorY: 0 
         };
+        // Right Stick (Look)
         this.stickRight = { 
             active: false, id: null, 
             startX: 0, startY: 0, 
             vectorX: 0, vectorY: 0 
         };
 
-        // DOM Elements
+        // Elements
         this.worldElement = document.querySelector('.fpc-world');
         this.gridElement = document.querySelector('.primitive-grid');
         this.fpsElement = document.getElementById('fps-counter');
         
-        // UI Elements
         this.knobLeft = document.getElementById('knob-move');
         this.knobRight = document.getElementById('knob-look');
         this.jumpBtn = document.getElementById('btn-jump');
-        this.fsBtn = document.getElementById('btn-fullscreen');
 
         this.lastTime = performance.now();
         this.frameCount = 0;
@@ -44,12 +46,11 @@ export class FirstPersonController {
     }
 
     init() {
-        // --- Desktop Inputs ---
+        // --- Desktop ---
         window.addEventListener('keydown', e => this.key(e.code, true));
         window.addEventListener('keyup', e => this.key(e.code, false));
         
         document.body.addEventListener('click', (e) => {
-            // Lock pointer only if we didn't click a UI button
             if(e.target.tagName !== 'BUTTON' && !e.target.closest('.mobile-jump-btn')) {
                 document.body.requestPointerLock();
             }
@@ -63,8 +64,7 @@ export class FirstPersonController {
             }
         });
 
-        // --- Mobile Inputs ---
-        // passive: false is required to prevent browser scrolling
+        // --- Mobile ---
         document.addEventListener('touchstart', this.handleTouchStart, { passive: false });
         document.addEventListener('touchmove', this.handleTouchMove, { passive: false });
         document.addEventListener('touchend', this.handleTouchEnd);
@@ -78,28 +78,6 @@ export class FirstPersonController {
             this.jumpBtn.addEventListener('touchend', (e) => {
                 e.preventDefault();
                 this.keys.space = false;
-            });
-        }
-
-        // Fullscreen Toggle
-        if(this.fsBtn) {
-            this.fsBtn.addEventListener('click', () => {
-                if (!document.fullscreenElement) {
-                    document.documentElement.requestFullscreen().catch(err => {
-                        console.warn("Fullscreen blocked:", err);
-                    });
-                } else {
-                    document.exitFullscreen();
-                }
-            });
-
-            // Update Text
-            document.addEventListener('fullscreenchange', () => {
-                if (document.fullscreenElement) {
-                    this.fsBtn.textContent = "Exit Fullscreen";
-                } else {
-                    this.fsBtn.textContent = "Go Fullscreen";
-                }
             });
         }
     }
@@ -116,7 +94,7 @@ export class FirstPersonController {
         this.rot.pitch = Math.max(-89, Math.min(89, this.rot.pitch));
     }
 
-    // --- Stick Logic Helper ---
+    // --- Logic: Stick Visuals ---
     
     updateStickStart(stick, touch, knobElement) {
         stick.active = true;
@@ -130,15 +108,17 @@ export class FirstPersonController {
             knobElement.style.display = 'block';
             knobElement.style.left = touch.clientX + 'px';
             knobElement.style.top = touch.clientY + 'px';
+            // Center the knob on the touch point
             knobElement.style.transform = `translate(-50%, -50%)`;
         }
     }
 
     updateStickMove(stick, touch, knobElement) {
-        const maxRadius = 40; // Joystick range in px
+        const maxRadius = 40; 
         let dx = touch.clientX - stick.startX;
         let dy = touch.clientY - stick.startY;
         
+        // Clamp visual range
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist > maxRadius) {
             const ratio = maxRadius / dist;
@@ -146,10 +126,11 @@ export class FirstPersonController {
             dy *= ratio;
         }
 
-        // Normalize -1 to 1
+        // Output Vector (-1 to 1)
         stick.vectorX = dx / maxRadius;
         stick.vectorY = dy / maxRadius;
 
+        // Move the knob relative to the start point
         if(knobElement) {
             knobElement.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
         }
@@ -163,23 +144,37 @@ export class FirstPersonController {
         if(knobElement) knobElement.style.display = 'none';
     }
 
-    // --- Touch Handlers ---
+    // --- Logic: Gestures & Touch ---
 
     handleTouchStart = (e) => {
-        // Don't capture touches intended for buttons
-        if(e.target.tagName === 'BUTTON' || e.target.closest('.mobile-jump-btn')) return;
+        // Ignore UI buttons
+        if(e.target.closest('.mobile-jump-btn')) return;
         
         e.preventDefault();
+
+        // 1. Double Tap to Fullscreen Check
+        const now = performance.now();
+        // If tap interval is < 300ms, treat as double tap
+        if (now - this.lastTapTime < 300) {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen().catch(() => {});
+            }
+        }
+        this.lastTapTime = now;
+
+        // 2. Joysticks
         const halfScreen = window.innerWidth / 2;
 
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
 
-            // Left Side: Move Stick
+            // Left Side = Move
             if (t.clientX < halfScreen && !this.stickLeft.active) {
                 this.updateStickStart(this.stickLeft, t, this.knobLeft);
             }
-            // Right Side: Look Stick
+            // Right Side = Look
             else if (t.clientX >= halfScreen && !this.stickRight.active) {
                 this.updateStickStart(this.stickRight, t, this.knobRight);
             }
@@ -220,14 +215,15 @@ export class FirstPersonController {
         const sin = Math.sin(rad);
         const cos = Math.cos(rad);
         
-        // 1. LOOK (Right Joystick)
+        // 1. ROTATION (Right Joystick)
+        // Rate-based rotation
         if (this.stickRight.active) {
             this.rot.yaw += this.stickRight.vectorX * this.lookSpeed;
             this.rot.pitch -= this.stickRight.vectorY * this.lookSpeed;
             this.clampPitch();
         }
 
-        // 2. MOVE (Left Joystick + Keys)
+        // 2. MOVEMENT (Left Joystick + Keys)
         let forward = 0;
         let strafe = 0;
 
@@ -237,20 +233,19 @@ export class FirstPersonController {
         if (this.keys.d) strafe += 1;
         if (this.keys.a) strafe -= 1;
 
-        // Joystick (Y is inverted on screen)
+        // Left Joystick (Y is inverted: Up on screen is negative Y)
         if (this.stickLeft.active) {
             strafe += this.stickLeft.vectorX;
             forward -= this.stickLeft.vectorY; 
         }
 
-        // Clamp combined input
+        // Normalize speed
         const len = Math.sqrt(forward*forward + strafe*strafe);
         if (len > 1) {
             forward /= len;
             strafe /= len;
         }
 
-        // Apply
         if (Math.abs(forward) > 0 || Math.abs(strafe) > 0) {
             const dx = (strafe * cos) + (forward * sin);
             const dy = (strafe * sin) - (forward * cos);
@@ -258,13 +253,13 @@ export class FirstPersonController {
             this.pos.y += dy * this.speed;
         }
 
-        // 3. Gravity
+        // 3. GRAVITY
         if(this.pos.z === 0 && this.keys.space) this.velZ = 25;
         this.pos.z += this.velZ;
         if(this.pos.z > 0) this.velZ -= 1.2;
         if(this.pos.z < 0) { this.pos.z = 0; this.velZ = 0; }
 
-        // 4. Render
+        // 4. RENDER
         if (this.worldElement) {
             const r = this.worldElement.style;
             
