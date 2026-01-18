@@ -1,8 +1,8 @@
 export class FirstPersonController {
     constructor(config = {}) {
         this.speed = config.speed || 15;
-        this.sensitivity = config.sensitivity || 0.1; // Mouse
-        this.lookSpeed = config.lookSpeed || 2.5;     // Touch Joystick
+        this.sensitivity = config.sensitivity || 0.1;
+        this.lookSpeed = config.lookSpeed || 2.5;     
         this.eyeHeight = config.eyeHeight || 170; 
 
         // Physics State
@@ -14,20 +14,16 @@ export class FirstPersonController {
         this.keys = { w:false, a:false, s:false, d:false, space:false };
         
         // Mobile State
-        this.lastTapTime = 0; // For double-tap detection
+        this.lastTapTime = 0; 
         
+        // Track active touches to detect "taps" vs "drags"
+        // Map: id -> { startX, startY, hasMoved }
+        this.activeTouches = new Map();
+
         // Left Stick (Move)
-        this.stickLeft = { 
-            active: false, id: null, 
-            startX: 0, startY: 0, 
-            vectorX: 0, vectorY: 0 
-        };
+        this.stickLeft = { active: false, id: null, startX: 0, startY: 0, vectorX: 0, vectorY: 0 };
         // Right Stick (Look)
-        this.stickRight = { 
-            active: false, id: null, 
-            startX: 0, startY: 0, 
-            vectorX: 0, vectorY: 0 
-        };
+        this.stickRight = { active: false, id: null, startX: 0, startY: 0, vectorX: 0, vectorY: 0 };
 
         // Elements
         this.worldElement = document.querySelector('.fpc-world');
@@ -108,7 +104,6 @@ export class FirstPersonController {
             knobElement.style.display = 'block';
             knobElement.style.left = touch.clientX + 'px';
             knobElement.style.top = touch.clientY + 'px';
-            // Center the knob on the touch point
             knobElement.style.transform = `translate(-50%, -50%)`;
         }
     }
@@ -118,7 +113,6 @@ export class FirstPersonController {
         let dx = touch.clientX - stick.startX;
         let dy = touch.clientY - stick.startY;
         
-        // Clamp visual range
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist > maxRadius) {
             const ratio = maxRadius / dist;
@@ -126,11 +120,9 @@ export class FirstPersonController {
             dy *= ratio;
         }
 
-        // Output Vector (-1 to 1)
         stick.vectorX = dx / maxRadius;
         stick.vectorY = dy / maxRadius;
 
-        // Move the knob relative to the start point
         if(knobElement) {
             knobElement.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
         }
@@ -144,37 +136,45 @@ export class FirstPersonController {
         if(knobElement) knobElement.style.display = 'none';
     }
 
+    // --- Helper: Robust Fullscreen Toggle ---
+    toggleFullscreen() {
+        const doc = window.document;
+        const docEl = doc.documentElement;
+
+        // Check if already fullscreen
+        const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
+        const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
+
+        if(!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
+            if(requestFullScreen) requestFullScreen.call(docEl).catch(e => console.log("FS Blocked", e));
+        } else {
+            if(cancelFullScreen) cancelFullScreen.call(doc);
+        }
+    }
+
     // --- Logic: Gestures & Touch ---
 
     handleTouchStart = (e) => {
-        // Ignore UI buttons
         if(e.target.closest('.mobile-jump-btn')) return;
-        
         e.preventDefault();
 
-        // 1. Double Tap to Fullscreen Check
-        const now = performance.now();
-        // If tap interval is < 300ms, treat as double tap
-        if (now - this.lastTapTime < 300) {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(() => {});
-            } else {
-                document.exitFullscreen().catch(() => {});
-            }
-        }
-        this.lastTapTime = now;
-
-        // 2. Joysticks
         const halfScreen = window.innerWidth / 2;
 
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
 
-            // Left Side = Move
+            // 1. Register touch for "Tap" detection
+            this.activeTouches.set(t.identifier, {
+                startX: t.clientX,
+                startY: t.clientY,
+                hasMoved: false,
+                timestamp: performance.now()
+            });
+
+            // 2. Joysticks
             if (t.clientX < halfScreen && !this.stickLeft.active) {
                 this.updateStickStart(this.stickLeft, t, this.knobLeft);
             }
-            // Right Side = Look
             else if (t.clientX >= halfScreen && !this.stickRight.active) {
                 this.updateStickStart(this.stickRight, t, this.knobRight);
             }
@@ -186,6 +186,15 @@ export class FirstPersonController {
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             
+            // 1. Mark as moved (invalidates "Tap")
+            const touchData = this.activeTouches.get(t.identifier);
+            if (touchData) {
+                const dist = Math.hypot(t.clientX - touchData.startX, t.clientY - touchData.startY);
+                // If moved more than 10px, it's a drag, not a tap
+                if (dist > 10) touchData.hasMoved = true;
+            }
+
+            // 2. Joysticks
             if (this.stickLeft.active && t.identifier === this.stickLeft.id) {
                 this.updateStickMove(this.stickLeft, t, this.knobLeft);
             }
@@ -196,9 +205,30 @@ export class FirstPersonController {
     }
 
     handleTouchEnd = (e) => {
+        e.preventDefault(); // Important for some browsers to prevent ghost clicks
+
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
-            
+            const now = performance.now();
+
+            // 1. Double Tap Detection
+            const touchData = this.activeTouches.get(t.identifier);
+            if (touchData && !touchData.hasMoved) {
+                // It was a clean tap (no drag)
+                // Check duration (short tap)
+                if (now - touchData.timestamp < 250) {
+                    // Check time since LAST tap
+                    if (now - this.lastTapTime < 300) {
+                        this.toggleFullscreen();
+                        this.lastTapTime = 0; // Prevent triple-tap triggering
+                    } else {
+                        this.lastTapTime = now;
+                    }
+                }
+            }
+            this.activeTouches.delete(t.identifier);
+
+            // 2. Reset Joysticks
             if (this.stickLeft.active && t.identifier === this.stickLeft.id) {
                 this.resetStick(this.stickLeft, this.knobLeft);
             }
@@ -215,36 +245,29 @@ export class FirstPersonController {
         const sin = Math.sin(rad);
         const cos = Math.cos(rad);
         
-        // 1. ROTATION (Right Joystick)
-        // Rate-based rotation
+        // 1. ROTATION
         if (this.stickRight.active) {
             this.rot.yaw += this.stickRight.vectorX * this.lookSpeed;
             this.rot.pitch -= this.stickRight.vectorY * this.lookSpeed;
             this.clampPitch();
         }
 
-        // 2. MOVEMENT (Left Joystick + Keys)
+        // 2. MOVEMENT
         let forward = 0;
         let strafe = 0;
 
-        // Keys
         if (this.keys.w) forward += 1;
         if (this.keys.s) forward -= 1;
         if (this.keys.d) strafe += 1;
         if (this.keys.a) strafe -= 1;
 
-        // Left Joystick (Y is inverted: Up on screen is negative Y)
         if (this.stickLeft.active) {
             strafe += this.stickLeft.vectorX;
             forward -= this.stickLeft.vectorY; 
         }
 
-        // Normalize speed
         const len = Math.sqrt(forward*forward + strafe*strafe);
-        if (len > 1) {
-            forward /= len;
-            strafe /= len;
-        }
+        if (len > 1) { forward /= len; strafe /= len; }
 
         if (Math.abs(forward) > 0 || Math.abs(strafe) > 0) {
             const dx = (strafe * cos) + (forward * sin);
