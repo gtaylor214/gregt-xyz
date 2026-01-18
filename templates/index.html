@@ -3,6 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- "App Mode" Meta Tags: Hides browser UI if added to homescreen -->
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <title>Zola 3D Engine</title>
     <link rel="stylesheet" href="/main.css">
 </head>
@@ -12,22 +18,19 @@
     <div class="ui-layer">
         <div>
             <b>Zola 3D Engine</b><br>
-            
-            <!-- Hints -->
             <span class="desktop-hint">
                 WASD to Move &bull; Space to Jump &bull; Click to Look
             </span>
             <span class="mobile-hint" style="display:none; opacity:0.7;">
-                Left Stick: Move &bull; Right Stick: Look
+                Left Stick: Move &bull; Right Side: Look
             </span>
         </div>
         <div id="fps-counter" class="ui-fps">FPS: 0</div>
     </div>
 
     <!-- Mobile Controls -->
-    <!-- Important: These must match the IDs in the JS constructor -->
+    <!-- Only the Left Knob (Move) is visible now -->
     <div class="joystick-knob" id="knob-move"></div>
-    <div class="joystick-knob" id="knob-look"></div>
     
     <div class="mobile-jump-btn" id="btn-jump">JUMP</div>
 
@@ -38,7 +41,6 @@
     <script type="module">
         import { FirstPersonController } from '/js/FirstPersonController.js';
         
-        // Simple hint toggle
         if (window.matchMedia("(pointer: coarse)").matches) {
             document.querySelector('.desktop-hint').style.display = 'none';
             document.querySelector('.mobile-hint').style.display = 'inline';

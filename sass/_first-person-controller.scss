@@ -6,8 +6,12 @@ html, body {
 
 .fpc-viewport {
     width: 100vw; 
+    
+    /* Fallback for older browsers */
     height: 100vh;
+    /* Modern Fix: Fits content to visible area (accounting for URL bar) */
     height: 100dvh; 
+    
     overflow: hidden;
     position: relative;
     user-select: none;

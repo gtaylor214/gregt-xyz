@@ -1,8 +1,8 @@
 export class FirstPersonController {
     constructor(config = {}) {
         this.speed = config.speed || 15;
-        this.sensitivity = config.sensitivity || 0.1; // Mouse
-        this.lookSpeed = config.lookSpeed || 2.5;     // Touch Joystick
+        this.sensitivity = config.sensitivity || 0.1;
+        this.lookSpeed = config.lookSpeed || 2.5;     
         this.eyeHeight = config.eyeHeight || 170; 
 
         // Physics State
@@ -22,9 +22,9 @@ export class FirstPersonController {
         this.gridElement = document.querySelector('.primitive-grid');
         this.fpsElement = document.getElementById('fps-counter');
         
-        // Joystick Visuals
+        // Visuals
         this.knobLeft = document.getElementById('knob-move');
-        this.knobRight = document.getElementById('knob-look');
+        this.knobRight = null; // No visual for right stick
         this.jumpBtn = document.getElementById('btn-jump');
 
         this.lastTime = performance.now();
@@ -54,7 +54,6 @@ export class FirstPersonController {
         });
 
         // --- Mobile ---
-        // passive: false is critical for preventing scroll
         document.addEventListener('touchstart', this.handleTouchStart, { passive: false });
         document.addEventListener('touchmove', this.handleTouchMove, { passive: false });
         document.addEventListener('touchend', this.handleTouchEnd);
@@ -94,11 +93,11 @@ export class FirstPersonController {
         stick.vectorX = 0;
         stick.vectorY = 0;
 
+        // Visuals only update if element exists
         if(knobElement) {
             knobElement.style.display = 'block';
             knobElement.style.left = touch.clientX + 'px';
             knobElement.style.top = touch.clientY + 'px';
-            // Center the knob on the touch point
             knobElement.style.transform = `translate(-50%, -50%)`;
         }
     }
@@ -108,7 +107,7 @@ export class FirstPersonController {
         let dx = touch.clientX - stick.startX;
         let dy = touch.clientY - stick.startY;
         
-        // Clamp visual range
+        // Clamp logic
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist > maxRadius) {
             const ratio = maxRadius / dist;
@@ -136,7 +135,6 @@ export class FirstPersonController {
     // --- Touch Handlers ---
 
     handleTouchStart = (e) => {
-        // Ignore touches on the jump button
         if(e.target.closest('.mobile-jump-btn')) return;
         e.preventDefault();
 
@@ -145,14 +143,16 @@ export class FirstPersonController {
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
 
-            // Logic: Left vs Right side of screen
+            // Left Side (Move) -> Visual Knob
             if (t.clientX < halfScreen) {
                 if (!this.stickLeft.active) {
                     this.updateStickStart(this.stickLeft, t, this.knobLeft);
                 }
-            } else {
+            } 
+            // Right Side (Look) -> No Visual Knob (pass null)
+            else {
                 if (!this.stickRight.active) {
-                    this.updateStickStart(this.stickRight, t, this.knobRight);
+                    this.updateStickStart(this.stickRight, t, null);
                 }
             }
         }
@@ -163,18 +163,17 @@ export class FirstPersonController {
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             
-            // Update whichever stick owns this touch ID
             if (this.stickLeft.active && t.identifier === this.stickLeft.id) {
                 this.updateStickMove(this.stickLeft, t, this.knobLeft);
             }
             if (this.stickRight.active && t.identifier === this.stickRight.id) {
-                this.updateStickMove(this.stickRight, t, this.knobRight);
+                this.updateStickMove(this.stickRight, t, null);
             }
         }
     }
 
     handleTouchEnd = (e) => {
-        e.preventDefault(); // Prevents mouse emulation events
+        e.preventDefault(); 
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             
@@ -182,7 +181,7 @@ export class FirstPersonController {
                 this.resetStick(this.stickLeft, this.knobLeft);
             }
             if (this.stickRight.active && t.identifier === this.stickRight.id) {
-                this.resetStick(this.stickRight, this.knobRight);
+                this.resetStick(this.stickRight, null);
             }
         }
     }
