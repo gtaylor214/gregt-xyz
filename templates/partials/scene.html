@@ -1,0 +1,28 @@
+{% import "macros/primitives.html" as primitives %}
+{% set scene = load_data(path="content/data/scene.toml") %}
+
+<div class="fpc-viewport" 
+     style="background-color: {{ scene.settings.sky_color }}; perspective: {{ scene.settings.field_of_view }}px;">
+    
+    <div class="fpc-world" style="--fov: {{ scene.settings.field_of_view }}px">
+        
+        <!-- Grid -->
+        {% if scene.grid.enabled %}
+            {{ primitives::grid(size=scene.grid.size, color=scene.grid.color) }}
+        {% endif %}
+
+        <!-- Objects -->
+        {% for obj in scene.objects %}
+            {% if obj.type == "cube" %}
+                {{ primitives::cube(
+                    x=obj.x, 
+                    y=obj.y, 
+                    z=obj.z, 
+                    size=obj.size, 
+                    color=obj.color
+                ) }}
+            {% endif %}
+        {% endfor %}
+        
+    </div>
+</div>
