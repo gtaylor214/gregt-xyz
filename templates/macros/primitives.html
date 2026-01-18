@@ -1,0 +1,23 @@
+{% macro grid(size=2000, color="#333") %}
+<div class="primitive-grid" 
+     style="width:{{size}}px; height:{{size}}px; --grid-color:{{color}};">
+</div>
+{% endmacro %}
+
+{% macro cube(x, y, z, size, color) %}
+<div class="primitive-cube"
+     style="
+        --cube-x: {{x}}px;
+        --cube-y: {{y}}px; 
+        --cube-z: {{z}}px; 
+        --size: {{size}}px; 
+        color: {{color}};
+     ">
+    <div class="cube-face face-front">1</div>
+    <div class="cube-face face-back">2</div>
+    <div class="cube-face face-right">3</div>
+    <div class="cube-face face-left">4</div>
+    <div class="cube-face face-top">5</div>
+    <div class="cube-face face-bottom">6</div>
+</div>
+{% endmacro %}

@@ -1,0 +1,83 @@
+/* Global Mobile Reset: Prevents "pull to refresh" and zooming */
+html, body {
+    overscroll-behavior: none;
+    touch-action: none;
+}
+
+.fpc-viewport {
+    width: 100vw; 
+    height: 100vh;
+    /* Mobile viewport fix for URL bars */
+    height: 100dvh; 
+    overflow: hidden;
+    position: relative;
+    user-select: none;
+    background: #000;
+}
+
+.fpc-world {
+    --p-x: 0px;
+    --p-y: 0px; 
+    --p-z: 0px; 
+    --yaw: 0deg;
+    --pitch: 0deg;
+    --fov: 700px;
+
+    width: 100%; height: 100%;
+    position: absolute;
+    transform-style: preserve-3d;
+    transform-origin: 50% 50%;
+    will-change: transform; 
+    
+    transform: 
+        translateZ(var(--fov))
+        rotateX(var(--pitch))
+        rotateY(var(--yaw))
+        translate3d(
+            calc(var(--p-x) * -1), 
+            var(--p-z), 
+            calc(var(--p-y) * -1)
+        );
+}
+
+/* --- NEW: Mobile Controls --- */
+
+/* 1. Visual Joystick Knob (The "Nipple") */
+.joystick-knob {
+    position: absolute;
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    border: 2px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    transform: translate(-50%, -50%);
+    pointer-events: none; /* Allows touch to pass through to JS */
+    display: none;        /* Hidden until screen is touched */
+    z-index: 100;
+    will-change: top, left, transform;
+}
+
+/* 2. Jump Button (Mobile Only) */
+.mobile-jump-btn {
+    position: absolute;
+    bottom: 30px; right: 30px;
+    width: 60px; height: 60px;
+    background: rgba(255, 255, 255, 0.15);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    color: white;
+    font-size: 12px;
+    display: flex; align-items: center; justify-content: center;
+    user-select: none;
+    z-index: 100;
+    display: none; /* Hidden on Desktop */
+}
+
+.mobile-jump-btn:active {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+/* Show Jump button only on touch devices */
+@media (hover: none) and (pointer: coarse) {
+    .mobile-jump-btn { display: flex; }
+}

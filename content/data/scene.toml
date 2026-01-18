@@ -1,0 +1,40 @@
+[settings]
+sky_color = "#050505"
+field_of_view = 700
+
+[grid]
+enabled = true
+size = 2000
+color = "#333"
+
+[[objects]]
+type = "cube"
+x = 0
+y = 0
+z = 50
+size = 100
+color = "cyan"
+
+[[objects]]
+type = "cube"
+x = 0
+y = 0
+z = 126
+size = 50
+color = "magenta"
+
+[[objects]]
+type = "cube"
+x = 0
+y = 0      
+z = 164
+size = 25
+color = "yellow"
+
+[[objects]]
+type = "cube"
+x = -200
+y = 300      
+z = 150
+size = 50
+color = "#fff"
