@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Prevent scaling on mobile -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Zola 3D Engine</title>
     <link rel="stylesheet" href="/main.css">
@@ -14,23 +13,27 @@
         <div>
             <b>Zola 3D Engine</b><br>
             <span class="desktop-hint">WASD to Move &bull; Space to Jump &bull; Click to Look</span>
-            <span class="mobile-hint" style="display:none; opacity:0.7;">Left: Move &bull; Right: Look</span>
+            <span class="mobile-hint" style="display:none; opacity:0.7;">Dual Joysticks: Move &amp; Look</span>
+            
+            <br>
+            <button id="btn-fullscreen" class="ui-btn">Go Fullscreen</button>
         </div>
         <div id="fps-counter" class="ui-fps">FPS: 0</div>
     </div>
 
-    <!-- NEW: Mobile Controller Elements -->
-    <div class="joystick-knob"></div>
+    <!-- Controls -->
+    <div class="joystick-knob" id="knob-move"></div>
+    <div class="joystick-knob" id="knob-look"></div>
     <div class="mobile-jump-btn" id="btn-jump">JUMP</div>
 
-    <!-- Compile Scene -->
+    <!-- Scene -->
     {% include "partials/scene.html" %}
 
-    <!-- Initialize Driver -->
+    <!-- Driver -->
     <script type="module">
         import { FirstPersonController } from '/js/FirstPersonController.js';
         
-        // Simple detection to toggle UI text
+        // Simple UI toggle based on device type
         if (window.matchMedia("(pointer: coarse)").matches) {
             document.querySelector('.desktop-hint').style.display = 'none';
             document.querySelector('.mobile-hint').style.display = 'inline';

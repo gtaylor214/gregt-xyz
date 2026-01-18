@@ -40,9 +40,47 @@ html, body {
         );
 }
 
-/* --- NEW: Mobile Controls --- */
+/* --- UI Overlay --- */
+.ui-layer {
+    position: fixed;
+    width: 100%; height: 100%;
+    pointer-events: none; /* Touches pass through to scene */
+    z-index: 10;
+    color: white;
+    padding: 20px;
+    box-sizing: border-box;
+    display: flex;
+    justify-content: space-between;
+}
 
-/* 1. Visual Joystick Knob (The "Nipple") */
+.ui-fps {
+    color: lime;
+    font-weight: bold;
+    text-shadow: 1px 1px 0 #000;
+}
+
+/* Generic UI Button (Fullscreen, etc) */
+.ui-btn {
+    pointer-events: auto; /* Re-enable clicking */
+    background: rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: white;
+    padding: 6px 12px;
+    margin-top: 8px;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.2s;
+}
+
+.ui-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+/* --- Mobile Controls --- */
+
+/* Visual Joystick Knobs */
 .joystick-knob {
     position: absolute;
     width: 40px; height: 40px;
@@ -51,13 +89,13 @@ html, body {
     border: 2px solid rgba(255, 255, 255, 0.5);
     box-shadow: 0 0 10px rgba(0,0,0,0.5);
     transform: translate(-50%, -50%);
-    pointer-events: none; /* Allows touch to pass through to JS */
-    display: none;        /* Hidden until screen is touched */
+    pointer-events: none; 
+    display: none; /* Hidden until touched */
     z-index: 100;
     will-change: top, left, transform;
 }
 
-/* 2. Jump Button (Mobile Only) */
+/* Jump Button (Mobile Only) */
 .mobile-jump-btn {
     position: absolute;
     bottom: 30px; right: 30px;
@@ -70,14 +108,14 @@ html, body {
     display: flex; align-items: center; justify-content: center;
     user-select: none;
     z-index: 100;
-    display: none; /* Hidden on Desktop */
+    pointer-events: auto;
+    display: none; 
 }
 
 .mobile-jump-btn:active {
     background: rgba(255, 255, 255, 0.4);
 }
 
-/* Show Jump button only on touch devices */
 @media (hover: none) and (pointer: coarse) {
     .mobile-jump-btn { display: flex; }
 }
