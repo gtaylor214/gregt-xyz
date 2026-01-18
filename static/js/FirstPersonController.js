@@ -1,8 +1,8 @@
 export class FirstPersonController {
     constructor(config = {}) {
         this.speed = config.speed || 15;
-        this.sensitivity = config.sensitivity || 0.1;
-        this.lookSpeed = config.lookSpeed || 2.5;     
+        this.sensitivity = config.sensitivity || 0.1; // Mouse
+        this.lookSpeed = config.lookSpeed || 2.5;     // Touch Joystick
         this.eyeHeight = config.eyeHeight || 170; 
 
         // Physics State
@@ -13,16 +13,8 @@ export class FirstPersonController {
         // Input State
         this.keys = { w:false, a:false, s:false, d:false, space:false };
         
-        // Mobile State
-        this.lastTapTime = 0; 
-        
-        // Track active touches to detect "taps" vs "drags"
-        // Map: id -> { startX, startY, hasMoved }
-        this.activeTouches = new Map();
-
-        // Left Stick (Move)
+        // Mobile Sticks
         this.stickLeft = { active: false, id: null, startX: 0, startY: 0, vectorX: 0, vectorY: 0 };
-        // Right Stick (Look)
         this.stickRight = { active: false, id: null, startX: 0, startY: 0, vectorX: 0, vectorY: 0 };
 
         // Elements
@@ -30,6 +22,7 @@ export class FirstPersonController {
         this.gridElement = document.querySelector('.primitive-grid');
         this.fpsElement = document.getElementById('fps-counter');
         
+        // Joystick Visuals
         this.knobLeft = document.getElementById('knob-move');
         this.knobRight = document.getElementById('knob-look');
         this.jumpBtn = document.getElementById('btn-jump');
@@ -61,6 +54,7 @@ export class FirstPersonController {
         });
 
         // --- Mobile ---
+        // passive: false is critical for preventing scroll
         document.addEventListener('touchstart', this.handleTouchStart, { passive: false });
         document.addEventListener('touchmove', this.handleTouchMove, { passive: false });
         document.addEventListener('touchend', this.handleTouchEnd);
@@ -90,7 +84,7 @@ export class FirstPersonController {
         this.rot.pitch = Math.max(-89, Math.min(89, this.rot.pitch));
     }
 
-    // --- Logic: Stick Visuals ---
+    // --- Joystick Helpers ---
     
     updateStickStart(stick, touch, knobElement) {
         stick.active = true;
@@ -104,6 +98,7 @@ export class FirstPersonController {
             knobElement.style.display = 'block';
             knobElement.style.left = touch.clientX + 'px';
             knobElement.style.top = touch.clientY + 'px';
+            // Center the knob on the touch point
             knobElement.style.transform = `translate(-50%, -50%)`;
         }
     }
@@ -113,6 +108,7 @@ export class FirstPersonController {
         let dx = touch.clientX - stick.startX;
         let dy = touch.clientY - stick.startY;
         
+        // Clamp visual range
         const dist = Math.sqrt(dx*dx + dy*dy);
         if (dist > maxRadius) {
             const ratio = maxRadius / dist;
@@ -120,6 +116,7 @@ export class FirstPersonController {
             dy *= ratio;
         }
 
+        // Output Vector (-1 to 1)
         stick.vectorX = dx / maxRadius;
         stick.vectorY = dy / maxRadius;
 
@@ -136,25 +133,10 @@ export class FirstPersonController {
         if(knobElement) knobElement.style.display = 'none';
     }
 
-    // --- Helper: Robust Fullscreen Toggle ---
-    toggleFullscreen() {
-        const doc = window.document;
-        const docEl = doc.documentElement;
-
-        // Check if already fullscreen
-        const requestFullScreen = docEl.requestFullscreen || docEl.mozRequestFullScreen || docEl.webkitRequestFullScreen || docEl.msRequestFullscreen;
-        const cancelFullScreen = doc.exitFullscreen || doc.mozCancelFullScreen || doc.webkitExitFullscreen || doc.msExitFullscreen;
-
-        if(!doc.fullscreenElement && !doc.mozFullScreenElement && !doc.webkitFullscreenElement && !doc.msFullscreenElement) {
-            if(requestFullScreen) requestFullScreen.call(docEl).catch(e => console.log("FS Blocked", e));
-        } else {
-            if(cancelFullScreen) cancelFullScreen.call(doc);
-        }
-    }
-
-    // --- Logic: Gestures & Touch ---
+    // --- Touch Handlers ---
 
     handleTouchStart = (e) => {
+        // Ignore touches on the jump button
         if(e.target.closest('.mobile-jump-btn')) return;
         e.preventDefault();
 
@@ -163,20 +145,15 @@ export class FirstPersonController {
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
 
-            // 1. Register touch for "Tap" detection
-            this.activeTouches.set(t.identifier, {
-                startX: t.clientX,
-                startY: t.clientY,
-                hasMoved: false,
-                timestamp: performance.now()
-            });
-
-            // 2. Joysticks
-            if (t.clientX < halfScreen && !this.stickLeft.active) {
-                this.updateStickStart(this.stickLeft, t, this.knobLeft);
-            }
-            else if (t.clientX >= halfScreen && !this.stickRight.active) {
-                this.updateStickStart(this.stickRight, t, this.knobRight);
+            // Logic: Left vs Right side of screen
+            if (t.clientX < halfScreen) {
+                if (!this.stickLeft.active) {
+                    this.updateStickStart(this.stickLeft, t, this.knobLeft);
+                }
+            } else {
+                if (!this.stickRight.active) {
+                    this.updateStickStart(this.stickRight, t, this.knobRight);
+                }
             }
         }
     }
@@ -186,15 +163,7 @@ export class FirstPersonController {
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
             
-            // 1. Mark as moved (invalidates "Tap")
-            const touchData = this.activeTouches.get(t.identifier);
-            if (touchData) {
-                const dist = Math.hypot(t.clientX - touchData.startX, t.clientY - touchData.startY);
-                // If moved more than 10px, it's a drag, not a tap
-                if (dist > 10) touchData.hasMoved = true;
-            }
-
-            // 2. Joysticks
+            // Update whichever stick owns this touch ID
             if (this.stickLeft.active && t.identifier === this.stickLeft.id) {
                 this.updateStickMove(this.stickLeft, t, this.knobLeft);
             }
@@ -205,30 +174,10 @@ export class FirstPersonController {
     }
 
     handleTouchEnd = (e) => {
-        e.preventDefault(); // Important for some browsers to prevent ghost clicks
-
+        e.preventDefault(); // Prevents mouse emulation events
         for (let i = 0; i < e.changedTouches.length; i++) {
             const t = e.changedTouches[i];
-            const now = performance.now();
-
-            // 1. Double Tap Detection
-            const touchData = this.activeTouches.get(t.identifier);
-            if (touchData && !touchData.hasMoved) {
-                // It was a clean tap (no drag)
-                // Check duration (short tap)
-                if (now - touchData.timestamp < 250) {
-                    // Check time since LAST tap
-                    if (now - this.lastTapTime < 300) {
-                        this.toggleFullscreen();
-                        this.lastTapTime = 0; // Prevent triple-tap triggering
-                    } else {
-                        this.lastTapTime = now;
-                    }
-                }
-            }
-            this.activeTouches.delete(t.identifier);
-
-            // 2. Reset Joysticks
+            
             if (this.stickLeft.active && t.identifier === this.stickLeft.id) {
                 this.resetStick(this.stickLeft, this.knobLeft);
             }
@@ -245,14 +194,14 @@ export class FirstPersonController {
         const sin = Math.sin(rad);
         const cos = Math.cos(rad);
         
-        // 1. ROTATION
+        // 1. ROTATION (Right Stick)
         if (this.stickRight.active) {
             this.rot.yaw += this.stickRight.vectorX * this.lookSpeed;
             this.rot.pitch -= this.stickRight.vectorY * this.lookSpeed;
             this.clampPitch();
         }
 
-        // 2. MOVEMENT
+        // 2. MOVEMENT (Left Stick + Keys)
         let forward = 0;
         let strafe = 0;
 

@@ -13,21 +13,19 @@
         <div>
             <b>Zola 3D Engine</b><br>
             
-            <!-- Desktop Instructions -->
+            <!-- Hints -->
             <span class="desktop-hint">
                 WASD to Move &bull; Space to Jump &bull; Click to Look
             </span>
-            
-            <!-- Mobile Instructions -->
             <span class="mobile-hint" style="display:none; opacity:0.7;">
-                Double-tap to Fullscreen<br>
                 Left Stick: Move &bull; Right Stick: Look
             </span>
         </div>
         <div id="fps-counter" class="ui-fps">FPS: 0</div>
     </div>
 
-    <!-- Mobile Controls: Two Separate Knobs -->
+    <!-- Mobile Controls -->
+    <!-- Important: These must match the IDs in the JS constructor -->
     <div class="joystick-knob" id="knob-move"></div>
     <div class="joystick-knob" id="knob-look"></div>
     
@@ -40,7 +38,7 @@
     <script type="module">
         import { FirstPersonController } from '/js/FirstPersonController.js';
         
-        // Toggle hint text
+        // Simple hint toggle
         if (window.matchMedia("(pointer: coarse)").matches) {
             document.querySelector('.desktop-hint').style.display = 'none';
             document.querySelector('.mobile-hint').style.display = 'inline';

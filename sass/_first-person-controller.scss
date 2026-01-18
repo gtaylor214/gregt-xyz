@@ -7,7 +7,7 @@ html, body {
 .fpc-viewport {
     width: 100vw; 
     height: 100vh;
-    height: 100dvh; /* Mobile URL bar fix */
+    height: 100dvh; 
     overflow: hidden;
     position: relative;
     user-select: none;
@@ -15,31 +15,18 @@ html, body {
 }
 
 .fpc-world {
-    --p-x: 0px;
-    --p-y: 0px; 
-    --p-z: 0px; 
-    --yaw: 0deg;
-    --pitch: 0deg;
-    --fov: 700px;
+    --p-x: 0px; --p-y: 0px; --p-z: 0px; 
+    --yaw: 0deg; --pitch: 0deg; --fov: 700px;
 
     width: 100%; height: 100%;
     position: absolute;
     transform-style: preserve-3d;
     transform-origin: 50% 50%;
     will-change: transform; 
-    
-    transform: 
-        translateZ(var(--fov))
-        rotateX(var(--pitch))
-        rotateY(var(--yaw))
-        translate3d(
-            calc(var(--p-x) * -1), 
-            var(--p-z), 
-            calc(var(--p-y) * -1)
-        );
+    transform: translateZ(var(--fov)) rotateX(var(--pitch)) rotateY(var(--yaw)) translate3d(calc(var(--p-x) * -1), var(--p-z), calc(var(--p-y) * -1));
 }
 
-/* --- UI Overlay --- */
+/* UI Overlay */
 .ui-layer {
     position: fixed;
     width: 100%; height: 100%;
@@ -58,9 +45,7 @@ html, body {
     text-shadow: 1px 1px 0 #000;
 }
 
-/* --- Mobile Controls --- */
-
-/* Shared Joystick Style */
+/* Joystick Knobs */
 .joystick-knob {
     position: absolute;
     width: 40px; height: 40px;
@@ -70,12 +55,12 @@ html, body {
     box-shadow: 0 0 10px rgba(0,0,0,0.5);
     transform: translate(-50%, -50%);
     pointer-events: none; 
-    display: none; /* Hidden until touched */
+    display: none; 
     z-index: 100;
     will-change: top, left, transform;
 }
 
-/* Jump Button */
+/* Mobile Jump Button */
 .mobile-jump-btn {
     position: absolute;
     bottom: 30px; right: 30px;
@@ -88,15 +73,11 @@ html, body {
     display: flex; align-items: center; justify-content: center;
     user-select: none;
     z-index: 100;
-    pointer-events: auto; /* Clickable */
+    pointer-events: auto;
     display: none; 
 }
+.mobile-jump-btn:active { background: rgba(255, 255, 255, 0.4); }
 
-.mobile-jump-btn:active {
-    background: rgba(255, 255, 255, 0.4);
-}
-
-/* Only show mobile controls on touch devices */
 @media (hover: none) and (pointer: coarse) {
     .mobile-jump-btn { display: flex; }
 }
