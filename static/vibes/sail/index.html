@@ -583,7 +583,7 @@ function boot() {
 
   // ---- sim state ----
   const boat = { x:0, z:0, yaw:0, speed:0, sail:0.6, y:0, pitch:0, roll:0, boom:0 };
-  const wind = { angle: WIND_ANGLE, dir:[Math.cos(WIND_ANGLE), Math.sin(WIND_ANGLE)], speed:1.0 };
+  const wind = { angle: WIND_ANGLE, dir:[Math.cos(WIND_ANGLE), Math.sin(WIND_ANGLE)], speed:0.7 };
 
   // wind is configurable at runtime; waves re-orient AND change sea state with it
   function rebuildWaves(){
