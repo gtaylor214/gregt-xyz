@@ -24,6 +24,12 @@
   #wind{top:14px;left:14px;padding:9px 12px 7px;display:flex;flex-direction:column;align-items:center;}
   #wind .wl{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--sage);margin-bottom:3px;}
   #wind .ws{font:11px/1 ui-monospace,monospace;color:var(--ink);margin-top:3px;}
+  #windsvg{cursor:grab;touch-action:none;}
+  #windsvg:active{cursor:grabbing;}
+  #wind input[type=range]{-webkit-appearance:none;appearance:none;width:78px;height:3px;background:#3a342d;border-radius:3px;margin-top:9px;outline:none;}
+  #wind input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:13px;height:13px;border-radius:50%;background:var(--ink);border:2px solid #191613;cursor:pointer;}
+  #wind input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;background:var(--ink);border:none;cursor:pointer;}
+  #wind .wh{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-top:6px;}
   #touchctl{display:none;}
   body.touch #touchctl{display:flex;justify-content:space-between;position:fixed;left:0;right:0;bottom:0;padding:16px;z-index:6;pointer-events:none;}
   #touchctl .pad{display:flex;gap:14px;pointer-events:auto;}
@@ -40,7 +46,8 @@
 <canvas id="gl"></canvas>
 <div id="wind" class="card">
   <div class="wl">wind</div>
-  <svg viewBox="-50 -50 100 100" width="56" height="56">
+  <svg id="windsvg" viewBox="-50 -50 100 100" width="64" height="64">
+    <circle cx="0" cy="0" r="50" fill="transparent"/>
     <circle cx="0" cy="0" r="44" fill="none" stroke="#ffffff20" stroke-width="2"/>
     <polygon points="0,-47 -5,-39 5,-39" fill="#9caa8a"/>
     <g id="w-arrow">
@@ -48,7 +55,9 @@
       <polygon points="0,-40 -7,-27 7,-27" fill="#c2643c"/>
     </g>
   </svg>
-  <div class="ws"><span id="w-spd">–</span> kn</div>
+  <input id="w-speed" type="range" min="0.2" max="3" step="0.1" value="1">
+  <div class="ws"><span id="w-spd">1.0</span> kn</div>
+  <div class="wh">drag dial &middot; slider = speed</div>
 </div>
 <div id="hud" class="card">
   <div class="row"><span>speed</span><span id="h-speed">0.0</span></div>
@@ -87,20 +96,26 @@
 const G = 9.8;
 
 // ---- shared wave spectrum (one source of truth for GPU visual + CPU physics) -
+const WIND_ANGLE = 2.5;   // radians — single source of truth for wind AND wave heading
+// waves travel downwind, each offset from the wind by a small spread (largest swell most aligned)
 const WAVE_DEFS = [
-  { L: 24.0, A: 0.55, dir: [1.0, 0.18] },
-  { L: 12.0, A: 0.30, dir: [0.7, -0.9] },
-  { L: 6.8,  A: 0.15, dir: [-0.4, 1.0] },
-  { L: 3.9,  A: 0.08, dir: [1.0, 0.65] },
-  { L: 2.2,  A: 0.04, dir: [-0.8, 0.35] },
+  { L: 24.0, A: 0.55, spread: -0.10 },
+  { L: 12.0, A: 0.30, spread:  0.22 },
+  { L: 6.8,  A: 0.15, spread: -0.40 },
+  { L: 3.9,  A: 0.08, spread:  0.55 },
+  { L: 2.2,  A: 0.04, spread: -0.72 },
 ];
 const STEEP = 0.72;
 
-function precomputeWaves(defs) {
+const ISLAND_R = 22, ISLAND_LOWER = 1.0;
+const ISLAND_POS = { x: 26, z: -30 };
+
+function precomputeWaves(defs, windAngle) {
+  windAngle = windAngle || 0;
   const n = defs.length;
   return defs.map(d => {
-    const len = Math.hypot(d.dir[0], d.dir[1]) || 1;
-    const dx = d.dir[0] / len, dz = d.dir[1] / len;
+    const a = windAngle + d.spread;
+    const dx = Math.cos(a), dz = Math.sin(a);
     const k = (2 * Math.PI) / d.L;
     const w = Math.sqrt(G * k);
     const Q = Math.min(1.0, STEEP / (k * d.A * n));
@@ -301,6 +316,36 @@ function buildBuoy() {
 }
 function hash2(i, j) { const h = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return h - Math.floor(h); }
 
+// ---- procedural island heightfield (value-noise shaped coastline) -----------
+function vnoiseJS(x, z) {
+  const xi=Math.floor(x), zi=Math.floor(z), xf=x-xi, zf=z-zi;
+  const u=xf*xf*(3-2*xf), v=zf*zf*(3-2*zf);
+  const a=hash2(xi,zi), b=hash2(xi+1,zi), c=hash2(xi,zi+1), d=hash2(xi+1,zi+1);
+  return a + (b-a)*u + (c-a)*v + (a-b-c+d)*u*v;
+}
+function fbmJS(x, z) { let s=0, amp=0.5, f=1; for (let i=0;i<4;i++){ s+=amp*vnoiseJS(x*f,z*f); f*=2.0; amp*=0.5; } return s; }
+function islandHeight(lx, lz) {
+  const r = Math.hypot(lx, lz);
+  const coast = ISLAND_R * (0.72 + 0.42 * fbmJS(lx*0.045 + 5.1, lz*0.045 - 2.3));
+  const fall = Math.max(0, 1 - r / coast);
+  let h = Math.pow(fall, 1.7) * 6.5;
+  h += fbmJS(lx*0.16 + 1.0, lz*0.16 + 4.0) * fall * 2.2;
+  return h;
+}
+function buildIsland() {
+  const N = 96, span = ISLAND_R * 1.7;
+  const verts = [], faces = [];
+  for (let j=0;j<N;j++) for (let i=0;i<N;i++) {
+    const x = -span + 2*span*(i/(N-1)), z = -span + 2*span*(j/(N-1));
+    verts.push([x, islandHeight(x,z) - ISLAND_LOWER, z]);
+  }
+  for (let j=0;j<N-1;j++) for (let i=0;i<N-1;i++) {
+    const a=j*N+i, b=a+1, c=a+N, d=c+1;
+    faces.push([a,c,b],[b,c,d]);
+  }
+  return finalizeMesh(verts, faces);
+}
+
 // ---- smooth normals + flatten to typed arrays -------------------------------
 function finalizeMesh(verts, faces) {
   const nrm = verts.map(() => [0,0,0]);
@@ -332,7 +377,7 @@ function boot() {
   const gl = canvas.getContext('webgl2', { antialias: true });
   if (!gl) { document.getElementById('fail').style.display = 'grid'; return; }
 
-  const waves = precomputeWaves(WAVE_DEFS);
+  const waves = precomputeWaves(WAVE_DEFS, WIND_ANGLE);
   const waveA = new Float32Array(waves.length * 4), waveB = new Float32Array(waves.length * 4);
   waves.forEach((w, i) => {
     waveA.set([w.dx, w.dz, w.A, w.k], i*4);
@@ -436,24 +481,50 @@ function boot() {
     precision highp float; in float vA; uniform vec3 uFoam; out vec4 frag;
     void main(){ frag = vec4(uFoam, vA); }`;
 
+  const VS_ISLAND = `#version 300 es
+    uniform mat4 uProj, uView, uModel; in vec3 aPos; in vec3 aNormal;
+    out vec3 vN; out vec3 vW; out float vY;
+    void main(){ vec4 w = uModel*vec4(aPos,1.0); vN = mat3(uModel)*aNormal; vW = w.xyz; vY = w.y; gl_Position = uProj*uView*w; }`;
+  const FS_ISLAND = `#version 300 es
+    precision highp float; in vec3 vN; in vec3 vW; in float vY;
+    uniform vec3 uSun, uLight, uShadow, uCam, uFoam, uSkyH;
+    out vec4 frag;
+    void main(){
+      vec3 N = normalize(vN);
+      float ramp = smoothstep(0.4, 0.6, dot(N,uSun)*0.5+0.5);
+      vec3 shade = mix(uShadow, uLight, ramp);
+      vec3 sand=vec3(0.82,0.74,0.55), grass=vec3(0.33,0.45,0.26), rock=vec3(0.40,0.36,0.30);
+      vec3 c = mix(sand, grass, smoothstep(0.4,1.4,vY));
+      c = mix(c, rock, smoothstep(3.6,5.6,vY));
+      c = mix(c, rock, smoothstep(0.62,0.34,N.y)*0.6);   // steep faces read as rock
+      vec3 col = c * shade * 1.7;
+      float shore = smoothstep(0.35, 0.0, abs(vY - 0.05));
+      col = mix(col, uFoam, shore*0.5);
+      float dist = length(uCam - vW);
+      col = mix(col, uSkyH, smoothstep(60.0, 170.0, dist)*0.9);
+      frag = vec4(col, 1.0);
+    }`;
+
   function sh(type, src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
     if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){ console.error(gl.getShaderInfoLog(s), src); throw 'shader'; } return s; }
   function prog(vs, fs){ const p=gl.createProgram(); gl.attachShader(p,sh(gl.VERTEX_SHADER,vs)); gl.attachShader(p,sh(gl.FRAGMENT_SHADER,fs));
     gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)){ console.error(gl.getProgramInfoLog(p)); throw 'link'; } return p; }
   function loc(p, names){ const o={}; names.forEach(n=>o[n]=gl.getUniformLocation(p,n)); return o; }
 
-  let pOcean, pSolid, pSky, pWake;
+  let pOcean, pSolid, pSky, pWake, pIsland;
   try {
     pOcean = prog(VS_OCEAN, FS_OCEAN);
     pSolid = prog(VS_SOLID, FS_SOLID);
     pSky   = prog(VS_SKY, FS_SKY);
     pWake  = prog(VS_WAKE, FS_WAKE);
+    pIsland= prog(VS_ISLAND, FS_ISLAND);
   } catch(e){ document.getElementById('fail').style.display='grid'; return; }
 
   const uO = loc(pOcean, ['uProj','uView','uOffset','uTime','uWaveA','uWaveB','uSun','uCam','uDeep','uCrest','uFoam','uLight','uShadow','uSkyH']);
   const uS = loc(pSolid, ['uProj','uView','uModel','uSun','uColor','uLight','uShadow','uCam']);
   const uK = loc(pSky, ['uSkyTop','uSkyH']);
   const uW = loc(pWake, ['uProj','uView','uFoam']);
+  const uI = loc(pIsland, ['uProj','uView','uModel','uSun','uLight','uShadow','uCam','uFoam','uSkyH']);
 
   // buffers
   function buf(data, target){ const b=gl.createBuffer(); target=target||gl.ARRAY_BUFFER; gl.bindBuffer(target,b); gl.bufferData(target,data,gl.STATIC_DRAW); return b; }
@@ -465,17 +536,19 @@ function boot() {
   gl.enableVertexAttribArray(aXZ); gl.vertexAttribPointer(aXZ,2,gl.FLOAT,false,0,0);
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,oIbo); gl.bindVertexArray(null);
 
-  function makeSolidVao(mesh){
+  function makeSolidVao(mesh, program){
+    program = program || pSolid;
     const vbo=buf(mesh.pos), nbo=buf(mesh.nor), ibo=buf(mesh.idx, gl.ELEMENT_ARRAY_BUFFER);
     const vao=gl.createVertexArray(); gl.bindVertexArray(vao);
-    const ap=gl.getAttribLocation(pSolid,'aPos'), an=gl.getAttribLocation(pSolid,'aNormal');
+    const ap=gl.getAttribLocation(program,'aPos'), an=gl.getAttribLocation(program,'aNormal');
     gl.bindBuffer(gl.ARRAY_BUFFER,vbo); gl.enableVertexAttribArray(ap); gl.vertexAttribPointer(ap,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ARRAY_BUFFER,nbo); gl.enableVertexAttribArray(an); gl.vertexAttribPointer(an,3,gl.FLOAT,false,0,0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,ibo); gl.bindVertexArray(null);
     return { vao, count: mesh.count };
   }
-  const hullMesh = buildHull(), sparMesh = buildSpars(), sailMesh = buildSail(), buoyMesh = buildBuoy();
+  const hullMesh = buildHull(), sparMesh = buildSpars(), sailMesh = buildSail(), buoyMesh = buildBuoy(), islandMesh = buildIsland();
   const hull = makeSolidVao(hullMesh), spar = makeSolidVao(sparMesh), sail = makeSolidVao(sailMesh), buoy = makeSolidVao(buoyMesh);
+  const island = makeSolidVao(islandMesh, pIsland);
 
   // wake ribbon: dynamic, rebuilt each frame from boat position history
   const WAKE_MAX = 140;
@@ -495,7 +568,7 @@ function boot() {
   gl.bindBuffer(gl.ARRAY_BUFFER,skyVbo); const aSky=gl.getAttribLocation(pSky,'aPos');
   gl.enableVertexAttribArray(aSky); gl.vertexAttribPointer(aSky,2,gl.FLOAT,false,0,0); gl.bindVertexArray(null);
 
-  const totalVerts = ocean.pos.length/2 + hullMesh.vcount + sparMesh.vcount + sailMesh.vcount + buoyMesh.vcount;
+  const totalVerts = ocean.pos.length/2 + hullMesh.vcount + sparMesh.vcount + sailMesh.vcount + buoyMesh.vcount + islandMesh.vcount;
 
   // palette
   const COL = {
@@ -507,8 +580,36 @@ function boot() {
 
   // ---- sim state ----
   const boat = { x:0, z:0, yaw:0, speed:0, sail:0.6, y:0, pitch:0, roll:0, boom:0 };
-  const wind = { dir:[Math.cos(2.5), Math.sin(2.5)], speed:1.0 };
-  { const e=document.getElementById('w-spd'); if(e) e.textContent = wind.speed.toFixed(1); }
+  const wind = { angle: WIND_ANGLE, dir:[Math.cos(WIND_ANGLE), Math.sin(WIND_ANGLE)], speed:1.0 };
+
+  // wind is configurable at runtime; waves re-orient because they share its angle
+  function rebuildWaves(){
+    const nw = precomputeWaves(WAVE_DEFS, wind.angle);
+    waves.length = 0; for (const w of nw) waves.push(w);
+    waves.forEach((w,i)=>{ waveA.set([w.dx,w.dz,w.A,w.k], i*4); waveB.set([w.w,w.Q,w.phase,0], i*4); });
+  }
+  function setWind(angle){ wind.angle = angle; wind.dir = [Math.cos(angle), Math.sin(angle)]; rebuildWaves(); }
+
+  const wsvg = document.getElementById('windsvg');
+  let windDrag = false;
+  function setWindFromPointer(e){
+    const r = wsvg.getBoundingClientRect();
+    const cx = e.clientX - (r.left + r.width/2), cy = e.clientY - (r.top + r.height/2);
+    const len = Math.hypot(cx, cy); if (len < 1) return;
+    const wr = cx/len, wf = -cy/len;                       // invert the compass display mapping
+    const f2 = [Math.cos(boat.yaw), -Math.sin(boat.yaw)];
+    const fr = [f2[1], -f2[0]];
+    setWind(Math.atan2(wf*f2[1] + wr*fr[1], wf*f2[0] + wr*fr[0]));
+  }
+  if (wsvg){
+    wsvg.addEventListener('pointerdown', e=>{ windDrag=true; try{ wsvg.setPointerCapture(e.pointerId); }catch(_){} setWindFromPointer(e); e.preventDefault(); });
+    wsvg.addEventListener('pointermove', e=>{ if(windDrag){ setWindFromPointer(e); e.preventDefault(); } });
+    wsvg.addEventListener('pointerup',   ()=>{ windDrag=false; });
+    wsvg.addEventListener('pointercancel',()=>{ windDrag=false; });
+  }
+  const wspdEl = document.getElementById('w-speed'), wspdTxt = document.getElementById('w-spd');
+  if (wspdEl) wspdEl.addEventListener('input', ()=>{ wind.speed = parseFloat(wspdEl.value); if(wspdTxt) wspdTxt.textContent = wind.speed.toFixed(1); });
+  if (wspdTxt) wspdTxt.textContent = wind.speed.toFixed(1);
   const keys = {};
   addEventListener('keydown', e=>{ keys[e.key.toLowerCase()]=true; if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault(); });
   addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
@@ -549,6 +650,16 @@ function boot() {
     boat.yaw += rudder * 1.4 * dt * Math.min(1, 0.25 + boat.speed*0.25);
     boat.x += fwd[0]*boat.speed*dt;
     boat.z += fwd[1]*boat.speed*dt;
+    // island collision: if the boat reaches the shallows, push it back to deep water
+    {
+      const lx = boat.x - ISLAND_POS.x, lz = boat.z - ISLAND_POS.z;
+      if (islandHeight(lx, lz) - ISLAND_LOWER > -0.7) {
+        const r = Math.hypot(lx, lz) || 1, nx = lx/r, nz = lz/r;
+        let px = boat.x, pz = boat.z, guard = 0;
+        while (islandHeight(px - ISLAND_POS.x, pz - ISLAND_POS.z) - ISLAND_LOWER > -0.7 && guard++ < 28) { px += nx*0.5; pz += nz*0.5; }
+        boat.x = px; boat.z = pz; boat.speed *= 0.25;
+      }
+    }
     // natural sail trim: boom falls to the lee side, swings further out as we bear away, damped
     const right2D = [fwd[1], -fwd[0]];
     const localR = wd[0]*right2D[0] + wd[1]*right2D[1];
@@ -663,6 +774,16 @@ function boot() {
       }
     gl.bindVertexArray(null);
 
+    // island
+    gl.useProgram(pIsland);
+    const im = M4.translation(ISLAND_POS.x, 0, ISLAND_POS.z);
+    gl.uniformMatrix4fv(uI.uProj,false,proj); gl.uniformMatrix4fv(uI.uView,false,view); gl.uniformMatrix4fv(uI.uModel,false,im);
+    gl.uniform3fv(uI.uSun,sun); gl.uniform3fv(uI.uLight,COL.light); gl.uniform3fv(uI.uShadow,COL.shadow);
+    gl.uniform3fv(uI.uCam,eye); gl.uniform3fv(uI.uFoam,COL.foam); gl.uniform3fv(uI.uSkyH,COL.skyH);
+    gl.bindVertexArray(island.vao); gl.drawElements(gl.TRIANGLES, island.count, gl.UNSIGNED_INT, 0);
+    drawCalls++; tris += island.count/3;
+    gl.bindVertexArray(null);
+
     if (HUD.tris) HUD.tris.textContent = Math.round(tris).toLocaleString();
     if (HUD.draws) HUD.draws.textContent = drawCalls;
 
@@ -695,7 +816,7 @@ function boot() {
 }
 
 if (typeof window !== 'undefined') window.addEventListener('DOMContentLoaded', boot);
-if (typeof module !== 'undefined') module.exports = { M4, precomputeWaves, waveHeight, buildOceanGrid, buildHull, buildSpars, buildSail, buildBuoy, hash2, finalizeMesh };
+if (typeof module !== 'undefined') module.exports = { M4, precomputeWaves, waveHeight, buildOceanGrid, buildHull, buildSpars, buildSail, buildBuoy, hash2, fbmJS, islandHeight, buildIsland, finalizeMesh };
 </script>
 </body>
 </html>
