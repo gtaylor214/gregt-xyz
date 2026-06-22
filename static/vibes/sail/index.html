@@ -97,13 +97,16 @@ const G = 9.8;
 
 // ---- shared wave spectrum (one source of truth for GPU visual + CPU physics) -
 const WIND_ANGLE = 2.5;   // radians — single source of truth for wind AND wave heading
-// waves travel downwind, each offset from the wind by a small spread (largest swell most aligned)
+// dominant swell stays aligned (no crossed bands); the small, low-amplitude chop
+// fans out widely to break up the parallel "corduroy" look with organic texture
 const WAVE_DEFS = [
-  { L: 24.0, A: 0.55, spread: -0.10 },
-  { L: 12.0, A: 0.30, spread:  0.22 },
-  { L: 6.8,  A: 0.15, spread: -0.40 },
-  { L: 3.9,  A: 0.08, spread:  0.55 },
-  { L: 2.2,  A: 0.04, spread: -0.72 },
+  { L: 26.0, A: 0.46, spread:  0.00 },
+  { L: 17.0, A: 0.28, spread:  0.10 },
+  { L: 11.0, A: 0.18, spread: -0.28 },
+  { L: 7.0,  A: 0.12, spread:  0.40 },
+  { L: 4.6,  A: 0.07, spread: -0.52 },
+  { L: 3.0,  A: 0.045, spread: 0.66 },
+  { L: 2.0,  A: 0.03, spread: -0.80 },
 ];
 const STEEP = 0.72;
 
@@ -582,10 +585,19 @@ function boot() {
   const boat = { x:0, z:0, yaw:0, speed:0, sail:0.6, y:0, pitch:0, roll:0, boom:0 };
   const wind = { angle: WIND_ANGLE, dir:[Math.cos(WIND_ANGLE), Math.sin(WIND_ANGLE)], speed:1.0 };
 
-  // wind is configurable at runtime; waves re-orient because they share its angle
+  // wind is configurable at runtime; waves re-orient AND change sea state with it
   function rebuildWaves(){
-    const nw = precomputeWaves(WAVE_DEFS, wind.angle);
-    waves.length = 0; for (const w of nw) waves.push(w);
+    const s = wind.speed;
+    const amp = Math.min(1.8, Math.pow(s, 0.75));               // wave height grows with wind
+    const hf  = Math.min(1.1, Math.max(0, s - 0.6) * 0.45);     // windier => choppier short waves
+    const base = precomputeWaves(WAVE_DEFS, wind.angle);
+    waves.length = 0;
+    base.forEach((w,i)=>{
+      const t = i/(base.length-1);                              // 0 long swell .. 1 short chop
+      const A = w.A * amp * (1 + hf*t);
+      const Q = Math.min(1.0, STEEP*(0.8 + 0.45*Math.min(s,2.2)) / (w.k * A * base.length));
+      waves.push({ dx:w.dx, dz:w.dz, A, k:w.k, w:w.w, Q, phase:w.phase });
+    });
     waves.forEach((w,i)=>{ waveA.set([w.dx,w.dz,w.A,w.k], i*4); waveB.set([w.w,w.Q,w.phase,0], i*4); });
   }
   function setWind(angle){ wind.angle = angle; wind.dir = [Math.cos(angle), Math.sin(angle)]; rebuildWaves(); }
@@ -608,8 +620,9 @@ function boot() {
     wsvg.addEventListener('pointercancel',()=>{ windDrag=false; });
   }
   const wspdEl = document.getElementById('w-speed'), wspdTxt = document.getElementById('w-spd');
-  if (wspdEl) wspdEl.addEventListener('input', ()=>{ wind.speed = parseFloat(wspdEl.value); if(wspdTxt) wspdTxt.textContent = wind.speed.toFixed(1); });
+  if (wspdEl) wspdEl.addEventListener('input', ()=>{ wind.speed = parseFloat(wspdEl.value); if(wspdTxt) wspdTxt.textContent = wind.speed.toFixed(1); rebuildWaves(); });
   if (wspdTxt) wspdTxt.textContent = wind.speed.toFixed(1);
+  rebuildWaves();   // apply initial sea state
   const keys = {};
   addEventListener('keydown', e=>{ keys[e.key.toLowerCase()]=true; if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(e.key.toLowerCase())) e.preventDefault(); });
   addEventListener('keyup', e=>{ keys[e.key.toLowerCase()]=false; });
@@ -642,9 +655,16 @@ function boot() {
     const fwd = [Math.cos(boat.yaw), -Math.sin(boat.yaw)];
     const wn = Math.hypot(wind.dir[0],wind.dir[1])||1;
     const wd = [wind.dir[0]/wn, wind.dir[1]/wn];
-    const pointing = fwd[0]*wd[0] + fwd[1]*wd[1];     // 1 downwind, -1 upwind
-    const sailFactor = smooth(-0.7, -0.15, pointing);  // 0 in upwind no-go
-    const thrust = sailFactor * boat.sail * wind.speed * 4.2;
+    const pointing = fwd[0]*wd[0] + fwd[1]*wd[1];     // 1 dead downwind, -1 dead upwind
+    // polar model: true wind angle 0 = in irons, 180 = dead run; speed peaks on the reach
+    const twa = Math.acos(Math.max(-1, Math.min(1, -pointing))) * 180/Math.PI;
+    let polar = 0;
+    if (twa > 43) {
+      const rise = smooth(43, 72, twa);                  // climb out of the no-go zone
+      const reach = Math.exp(-Math.pow((twa - 105) / 52, 2)); // wing-like peak near 105 deg
+      polar = rise * (0.58 + 0.42 * reach);              // reach fastest, run ~0.66 of peak
+    }
+    const thrust = polar * boat.sail * wind.speed * 4.6;
     boat.speed += (thrust - boat.speed*1.3) * dt;
     boat.speed = Math.max(0, boat.speed);
     boat.yaw += rudder * 1.4 * dt * Math.min(1, 0.25 + boat.speed*0.25);
@@ -687,8 +707,9 @@ function boot() {
     // HUD
     if(HUD.speed) HUD.speed.textContent = boat.speed.toFixed(1);
     if(HUD.power) HUD.power.textContent = Math.round(boat.sail*100) + '%';
-    if(HUD.pos){ HUD.pos.textContent = sailFactor<0.02 ? 'IN IRONS (no-go)' :
-      pointing>0.5 ? 'running' : pointing>-0.2 ? 'reach' : 'close-hauled'; }
+    if(HUD.pos){ HUD.pos.textContent = polar < 0.02 ? 'no-go' :
+      ((twa < 72 ? 'close-hauled' : twa < 110 ? 'reach' : twa < 150 ? 'broad reach' : 'running')
+       + ' \u00b7 ' + Math.round(polar*100) + '%'); }
   }
   function smooth(a,b,x){ const t=Math.min(1,Math.max(0,(x-a)/(b-a))); return t*t*(3-2*t); }
 
