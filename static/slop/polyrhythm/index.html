@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>POLYRHYTHM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#04140F; --deep:#0A2A22; --foam:#C7F2DF; --dim:#5E8C7C;
+    --signal:#FF7A3D; --gold:#FFC96B; --miss:#E24E6B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--void);overscroll-behavior:none}
+  body{
+    font-family:"IBM Plex Mono",ui-monospace,monospace;color:var(--foam);
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+    touch-action:none;
+  }
+  canvas{display:block;width:100%;height:100%}
+  #hud{
+    position:fixed;top:0;left:0;right:0;display:flex;gap:1px;
+    background:rgba(4,20,15,.55);border-bottom:1px solid rgba(94,140,124,.3);
+    backdrop-filter:blur(6px);padding-top:env(safe-area-inset-top);pointer-events:none;
+  }
+  .cell{padding:7px 13px;border-right:1px solid rgba(94,140,124,.18)}
+  .cell:last-child{border-right:none;margin-left:auto;text-align:right}
+  .k{font-size:9px;letter-spacing:.18em;color:var(--dim);text-transform:uppercase}
+  .v{font-family:"Chakra Petch",sans-serif;font-weight:700;font-size:19px;line-height:1.1;font-variant-numeric:tabular-nums}
+  #comboV{color:var(--gold)}
+  .screen{
+    position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:18px;padding:26px;text-align:center;z-index:10;
+    background:radial-gradient(120% 90% at 50% 45%, var(--deep) 0%, var(--void) 70%);
+    overflow-y:auto;touch-action:pan-y;
+  }
+  .screen.hidden{display:none}
+  h1{font-family:"Chakra Petch",sans-serif;font-weight:700;font-size:clamp(28px,7.5vw,54px);letter-spacing:-.02em;line-height:.95}
+  h1 em{font-style:normal;color:var(--signal)}
+  .lede{max-width:48ch;font-size:13px;line-height:1.75;color:var(--dim);text-align:left}
+  .lede b{color:var(--foam);font-weight:500}
+  .lede i{font-style:normal;color:var(--gold)}
+  .gl{display:grid;grid-template-columns:auto 1fr;gap:11px 13px;max-width:44ch;font-size:12.5px;text-align:left;color:var(--dim);align-items:center}
+  .gl b{color:var(--foam);font-weight:500}
+  .gl canvas{width:28px;height:28px}
+  .verb{font-family:"Chakra Petch",sans-serif;font-weight:700;font-size:11px;letter-spacing:.1em;
+        color:var(--void);background:var(--foam);padding:3px 8px;white-space:nowrap}
+  button{
+    font-family:"Chakra Petch",sans-serif;font-weight:600;font-size:15px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--void);background:var(--foam);border:none;padding:14px 30px;
+    cursor:pointer;clip-path:polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px);
+  }
+  button:hover{background:var(--signal)}
+  button:focus-visible{outline:2px solid var(--gold);outline-offset:4px}
+  button.ghost{background:none;color:var(--dim);border:1px solid rgba(94,140,124,.4);clip-path:none;padding:10px 20px;font-size:12px}
+  button.ghost:hover{color:var(--foam);border-color:var(--foam);background:none}
+  button[disabled]{opacity:.3;cursor:default;pointer-events:none}
+  .row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .readout{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);min-height:1.4em}
+  .readout b{color:var(--gold);font-weight:500}
+  .taps{display:flex;gap:7px}
+  .tap{width:9px;height:9px;border:1px solid var(--dim);transform:rotate(45deg)}
+  .tap.lit{background:var(--signal);border-color:var(--signal)}
+  kbd{font-family:"IBM Plex Mono",monospace;font-size:11px;border:1px solid rgba(94,140,124,.5);padding:2px 7px;color:var(--foam)}
+  .hidden{display:none}
+  .rank{font-family:"Chakra Petch",sans-serif;font-weight:700;font-size:clamp(58px,17vw,96px);
+        line-height:.9;color:var(--gold)}
+  .stats{display:grid;grid-template-columns:auto auto;gap:6px 22px;font-size:12px;color:var(--dim)}
+  .stats b{color:var(--foam);font-weight:500;text-align:right;font-variant-numeric:tabular-nums}
+  #btn-stop{position:fixed;z-index:11;right:calc(env(safe-area-inset-right) + 14px);top:calc(env(safe-area-inset-top) + 44px)}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+<button id="btn-stop" class="ghost hidden">Stop</button>
+
+<div id="hud" aria-hidden="true">
+  <div class="cell"><div class="k">Combo</div><div class="v" id="comboV">0</div></div>
+  <div class="cell"><div class="k">Best</div><div class="v" id="multV">0</div></div>
+  <div class="cell"><div class="k">Rhythm</div><div class="v" id="foeV">1</div></div>
+  <div class="cell"><div class="k">Cycle</div><div class="v" id="cycV">—</div></div>
+</div>
+
+<div class="screen" id="scr-title">
+  <h1>POLY<em>RHYTHM</em></h1>
+  <p class="lede"><b>Sides are beats.</b> A triangle strikes every 3, a square every 4, a pentagon every 5. Each keeps its own pulse, forever, and together they make a polyrhythm — the <i>cycle</i> is how many beats pass before the whole pattern comes back around.</p>
+  <div class="gl">
+    <canvas class="ic" data-sides="3"></canvas><div>Rings contract one per beat. Tap when a shape reaches the circle — the <i>gold</i> edge is perfect, for double damage.</div>
+    <canvas class="ic" data-sides="5"></canvas><div>Tap nothing on the empty beats. Shots arriving together clear with one tap.</div>
+    <canvas class="ic" data-sides="6"></canvas><div>Each hit damages the piece that threw it. Break them all and the rhythm is yours.</div>
+  </div>
+  <button id="btn-start">Start</button>
+  <div class="row">
+    <button class="ghost" id="btn-restart">Restart at 1</button>
+    <button class="ghost" id="btn-cal">Calibrate</button>
+    <button class="ghost" id="btn-death">Health mode: off</button>
+    <button class="ghost" id="btn-endless">Endless</button>
+  </div>
+</div>
+
+<div class="screen hidden" id="scr-down">
+  <h1>DOWN<em>ED</em></h1>
+  <p class="lede" style="text-align:center">Pieces broken across <b id="down-foes">0</b> opponents.<br>Longest chain <b id="down-chain">0</b>.</p>
+  <div class="row">
+    <button id="btn-again">Again</button>
+    <button class="ghost" id="btn-home">Title</button>
+  </div>
+  <button class="ghost" id="btn-death2" style="margin-top:-6px">Health mode: off</button>
+</div>
+
+<div class="screen hidden" id="scr-cal">
+  <h1 style="font-size:clamp(24px,6vw,40px)">TAP THE <em>CLICK</em></h1>
+  <p class="lede" style="text-align:center">Eight beats. Tap <kbd>space</kbd> or the screen when you <b>hear</b> it, not when you think you should.</p>
+  <div class="taps" id="taps"></div>
+  <div class="readout" id="cal-read">listening…</div>
+  <button class="hidden" id="btn-go">Done</button>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════
+   CLOCK
+   ══════════════════════════════════════════════════════════════ */
+const BPM = 128, SPB = 60 / BPM;
+const LOOKAHEAD = 0.12, TICK = 25;
+const W_PERFECT = 0.035, W_HIT = 0.080, W_CLAIM = 0.170;
+const HITSTOP = 0.070;
+const LOOK = 7;                       // beats of visible approach
+
+let ac, master, bus, noiseBuf;
+let calOffset = 0, mode = 'idle';
+let originTime = 0, nextIdx = 0, timer = null;
+
+const beatTime = i => originTime + i * SPB;
+const beatNow  = () => (ac.currentTime - calOffset - originTime) / SPB;
+
+/* ── synthesis ─────────────────────────────────────────────── */
+function initAudio(){
+  ac = new (window.AudioContext || window.webkitAudioContext)();
+  master = ac.createGain(); master.gain.value = 0.85;
+  const comp = ac.createDynamicsCompressor();
+  comp.threshold.value = -12; comp.ratio.value = 6;
+  master.connect(comp).connect(ac.destination);
+  bus = ac.createGain(); bus.connect(master);
+  const n = ac.sampleRate * 0.5;
+  noiseBuf = ac.createBuffer(1, n, ac.sampleRate);
+  const d = noiseBuf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+}
+function env(t, peak, dur, node){
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  node.connect(g).connect(bus);
+  return g;
+}
+function noise(t, dur, type, freq, peak){
+  const s = ac.createBufferSource(); s.buffer = noiseBuf;
+  const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq;
+  s.connect(f); env(t, peak, dur, f);
+  s.start(t); s.stop(t + dur + 0.02);
+}
+function tone(t, freq, dur, peak, type, cut){
+  const o = ac.createOscillator(); o.type = type || 'triangle';
+  o.frequency.value = freq;
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut || 3000;
+  o.connect(f); env(t, peak, dur, f);
+  o.start(t); o.stop(t + dur + 0.05);
+}
+/* Each rhythm gets its own kit and bassline. One bar of drums looped forever
+   is what made a session wear out, and none of this costs a sample. */
+const KITS = [
+  { k: [165, 44, 0.11, 0.30], s: [1900, 0.13, 0.42], h: [7600, 0.026, 0.042] },
+  { k: [205, 38, 0.085, 0.24], s: [1350, 0.17, 0.36], h: [9800, 0.018, 0.034] },
+  { k: [135, 40, 0.145, 0.38], s: [2700, 0.10, 0.38], h: [6200, 0.032, 0.052] },
+  { k: [180, 52, 0.10, 0.22], s: [950, 0.20, 0.34], h: [11000, 0.015, 0.030] },
+];
+/* eight eighth-notes per bar; numbers are semitones off the chord root */
+const BASSES = [
+  [0, null, null, null, 7, null, null, null],
+  [0, null, 0, null, null, 7, null, 5],
+  [0, null, null, 7, 0, null, 3, null],
+  [0, 0, null, null, 7, null, null, 5],
+  [0, null, 7, null, 5, null, 7, null],
+  [0, null, null, 0, null, 7, null, null],
+];
+let kit = KITS[0], bassLine = BASSES[0];
+
+function kick(t){
+  const [f0, f1, drop, dur] = kit.k;
+  const o = ac.createOscillator(); o.type = 'sine';
+  o.frequency.setValueAtTime(f0, t);
+  o.frequency.exponentialRampToValueAtTime(f1, t + drop);
+  env(t, 1.0, dur, o); o.start(t); o.stop(t + dur + 0.04);
+}
+function snare(t, soft){
+  noise(t, kit.s[1] * (soft ? 0.55 : 1), 'bandpass', kit.s[0], kit.s[2] * (soft ? 0.45 : 1));
+}
+function hat(t, soft){
+  noise(t, soft ? kit.h[1] : kit.h[2], 'highpass', kit.h[0], soft ? 0.08 : 0.15);
+}
+/* a soft triad under the bar, so the chord changes are audible as harmony */
+function pad(t, semi){
+  [0, 3, 7].forEach((iv, n) => {
+    const o = ac.createOscillator(); o.type = 'sawtooth';
+    o.frequency.value = 147 * Math.pow(2, (semi + iv) / 12);
+    o.detune.value = n * 4 - 4;
+    const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
+    o.connect(f); env(t, 0.055, 1.5, f); o.start(t); o.stop(t + 1.6);
+  });
+}
+function arpNote(t, semi, step){
+  const iv = [0, 7, 12, 15][step % 4];
+  tone(t, 294 * Math.pow(2, (semi + iv) / 12), 0.16, 0.07, 'triangle', 5000);
+}
+function bassNote(t, semi){
+  const o = ac.createOscillator(); o.type = 'sawtooth';
+  o.frequency.value = 55 * Math.pow(2, semi / 12);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(900, t);
+  f.frequency.exponentialRampToValueAtTime(180, t + 0.22);
+  o.connect(f); env(t, 0.34, 0.26, f); o.start(t); o.stop(t + 0.3);
+}
+function click(t){
+  const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = 1400;
+  env(t, 0.30, 0.035, o); o.start(t); o.stop(t + 0.06);
+}
+/* a piece's pitch is its shape — the opponent is literally a chord */
+/* Four distinct pitch CLASSES, so the shapes stay tellable apart once hit
+   tones are folded into one octave. Together they voice a minor seventh:
+   square is the root, hexagon the third, pentagon the fifth, triangle the
+   seventh — small and fast sits high, large and slow sits low. */
+const SIDE_SEMI = { 3: 10, 4: 0, 5: 7, 6: 3 };
+/* the square polygon plays a square wave — timbre reinforces the read */
+const SIDE_WAVE = { 3: 'triangle', 4: 'square', 5: 'sawtooth', 6: 'triangle' };
+const hzOf = (sides, semi) =>
+  294 * Math.pow(2, ((SIDE_SEMI[sides] || 0) + (semi || 0)) / 12);
+/* each living piece plays an ostinato on its own period: the polyrhythm
+   you see in the body is the polyrhythm you hear */
+function pieceNote(t, sides, semi){
+  const o = ac.createOscillator(); o.type = SIDE_WAVE[sides] || 'sawtooth';
+  /* the hexagon sits a fifth below everything; an octave down from there put
+     it at 147Hz, under the kick and inaudible on a phone */
+  o.frequency.value = hzOf(sides, semi) / (sides >= 6 ? 1 : 2);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass';
+  f.frequency.setValueAtTime(1100, t);
+  f.frequency.exponentialRampToValueAtTime(280, t + 0.24);
+  o.connect(f); env(t, sides === 6 ? 0.4 : 0.3, 0.28, f);
+  o.start(t); o.stop(t + 0.32);
+}
+function telegraph(t, sides, semi){
+  tone(t, hzOf(sides, semi) * 2, 0.06, 0.15, 'triangle', 3600);
+}
+function parrySnd(){
+  const t = ac.currentTime;
+  tone(t, 1180, 0.16, 0.28, 'square', 6000);
+  tone(t + 0.02, 1770, 0.22, 0.16, 'sine', 8000);
+  noise(t, 0.07, 'highpass', 9000, 0.18);
+}
+/* a chord plays the actual pitches of the pieces you just answered */
+/* Every hit lands in one octave. Left alone, shapes spanned 294Hz to 1176Hz
+   and sine to sawtooth, so a hexagon hit was inaudible while a pentagon rang
+   out. Folding into a fixed band keeps each shape's pitch class — its identity —
+   while making all of them equally present. */
+function hitHz(sides, semi){
+  let f = hzOf(sides, semi) * 2;
+  while (f < 494) f *= 2;
+  while (f >= 988) f /= 2;
+  return f;
+}
+function chordSnd(hits, perfect, semi){
+  const t = ac.currentTime;
+  const seen = new Set();
+  hits.forEach((m, i) => {
+    if (seen.has(m.sides)) return;
+    seen.add(m.sides);
+    /* A hit and a perfect differ by brightness and timbre, never by octave or
+       by loudness — a hit must always read as connecting. */
+    tone(t + i * 0.012, hitHz(m.sides, semi),
+         perfect ? 0.20 : 0.17, perfect ? 0.26 : 0.24,
+         perfect ? 'square' : 'sawtooth',
+         perfect ? 6800 : 5200);
+  });
+  /* a short transient so a hit cuts through the kit instead of sitting behind it */
+  noise(t, perfect ? 0.035 : 0.028, 'highpass', perfect ? 7000 : 4500,
+        perfect ? 0.17 : 0.14);
+  if (perfect){
+    noise(t, 0.05, 'highpass', 9000, 0.12);
+    tone(t + 0.015, hitHz(hits[0].sides, semi) * 1.5, 0.16, 0.10, 'sine', 9000);
+  }
+}
+function whiffSnd(){ noise(ac.currentTime, 0.07, 'lowpass', 520, 0.26); }
+function hurtSnd(){
+  const t = ac.currentTime;
+  const o = ac.createOscillator(); o.type = 'sawtooth';
+  o.frequency.setValueAtTime(180, t);
+  o.frequency.exponentialRampToValueAtTime(60, t + 0.18);
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 800;
+  o.connect(f); env(t, 0.34, 0.22, f); o.start(t); o.stop(t + 0.26);
+}
+function breakSnd(sides){
+  const t = ac.currentTime;
+  const base = hzOf(sides);
+  [0, 0.05, 0.10, 0.15].forEach((dt, i) =>
+    tone(t + dt, base * Math.pow(2, (5 - i * 4) / 12), 0.2, 0.20, 'triangle', 3400));
+  noise(t, 0.22, 'bandpass', 1500, 0.22);
+}
+function healSnd(){
+  const t = ac.currentTime;
+  [0, 5, 9].forEach((s, i) =>
+    tone(t + i * 0.06, 392 * Math.pow(2, s / 12), 0.34, 0.15, 'sine', 5000));
+}
+function foeDownSnd(){
+  const t = ac.currentTime;
+  [0, 4, 7, 12].forEach((s, i) => tone(t + i * 0.055, 392 * Math.pow(2, s / 12), 0.4, 0.16, 'sine', 6000));
+}
+
+/* ══════════════════════════════════════════════════════════════
+   OPPONENTS — a body is a list of polygons. Sides == period.
+   ══════════════════════════════════════════════════════════════ */
+/* Fights are generated, not authored. Everything is a pure function of the
+   fight number, so fight 23 is the same fight 23 for everyone, forever, and
+   the ladder never runs out. Difficulty ramps on three axes: how many pieces,
+   which periods are in play, and how much of it sits off the beat. */
+const PROGS = [[0,0,5,5],[0,5,3,5],[0,3,5,3],[0,7,5,3],[0,5,3,7],[0,0,7,5],[0,-2,5,3]];
+const KEYS  = [0, -3, 2, -5, 5, -1, 3, -7];
+
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const lcmOf = c => c.reduce((a, b) => a * b / gcd(a, b), 1);
+
+function genRhythm(n, quiet){              // n is 1-based
+  const rnd = mulberry32(0x5EED ^ (n * 2654435761));
+  /* the shape pool widens before the piece count grows, so there's always a
+     real choice of composition rather than one forced answer */
+  /* the shape pool opens early so the scorer always has a real choice */
+  const pool  = n >= 3 ? [3, 4, 5, 6] : n >= 2 ? [3, 4] : [4];
+  const count = n < 2 ? 1 : n < 3 ? 2 : n < 5 ? 3 : n < 8 ? 4 : 5;
+  const target = Math.min(1.35, 0.40 + 0.07 * (n - 1));
+  /* Late on, doubling up a fast shape is the only way to keep raising the
+     rate — four distinct shapes top out under one tap per beat. */
+  const repCost = Math.max(0.25, 0.60 - 0.03 * n);
+  const hpBonus = Math.floor(n / 4);
+  /* A composition's rhythm only becomes a groove once its whole cycle has come
+     around. /3 /4 /5 doesn't repeat for 60 beats — longer than the fight — so
+     it never resolves into anything you can feel. Demand the cycle fit inside
+     the fight at least this many times; relax it later, when fights are long
+     enough to carry a sprawling one. */
+  const wantLoops = n < 6 ? 2 : n < 12 ? 1.6 : 1.2;
+  const prev = quiet || n < 2 ? null : genRhythm(n - 1, true).comp.join('/');
+  /* Grooviness alone converges on the same two or three shapes forever, and the
+     pentagon — coprime with everything — would never appear at all. Rotate a
+     featured shape through the ladder so every shape gets its fights. */
+  const featured = pool[n % pool.length];
+  let best = null;
+  (function pick(start, acc){
+    if (acc.length === count){
+      const d = acc.reduce((s2, x) => s2 + 1 / x, 0);
+      /* distinct shapes are the point of the game, so repeats are expensive.
+         Density is what picks between the sets that survive that. */
+      const repeats = acc.length - new Set(acc).size;
+      /* how long the slowest piece survives, roughly two damage per answer */
+      const span = Math.max(...acc.map(x => Math.ceil((3 + x + hpBonus) / 2) * x));
+      const loops = span / lcmOf(acc);
+      const stale = prev && acc.join('/') === prev ? 0.5 : 0;   // don't repeat last fight
+      const feat = acc.includes(featured) ? -0.30 : 0;
+      const key = Math.abs(d - target)
+                + repeats * repCost
+                + Math.max(0, wantLoops - loops) * 0.55
+                + stale + feat + rnd() * 0.03;
+      if (!best || key < best.key) best = { key, comp: acc.slice() };
+      return;
+    }
+    for (let i = start; i < pool.length; i++){ acc.push(pool[i]); pick(i, acc); acc.pop(); }
+  })(0, []);
+  return {
+    comp: best.comp,
+    key: KEYS[n % KEYS.length],
+    prog: PROGS[(rnd() * PROGS.length) | 0],
+    /* Off-beat phases are off for now — everything lands on a whole beat.
+       The machinery is intact: to phase them back in, restore
+         n < 2 ? 0 : Math.min(0.55, 0.15 * (n - 1))
+       or start them later, e.g. n < 12 ? 0 : Math.min(0.4, 0.08 * (n - 11)). */
+    shiftP: 0,
+    kit: (rnd() * KITS.length) | 0,
+    bass: (rnd() * BASSES.length) | 0,
+    hpBonus,
+    seed: 1013 + n * 7919
+  };
+}
+let tune = { key: 0, prog: [0, 0, 0, 0] };
+/* one transpose, applied to everything pitched, so a fight moves like a song */
+const semiAt = b => tune.key + tune.prog[Math.floor(Math.max(0, b) / 4) % tune.prog.length];
+/* Every piece is uniform: exactly one shot, every `sides` beats, always at
+   the same point in the bar. What varies is its PHASE — some pieces sit on
+   the beat, some on the and. Syncopation is a property of the ensemble,
+   never of a piece, so each one stays readable on its own. */
+const SHIFTS = [0, 0.5];
+/* hue carries identity: with several tracks running you attribute a shot
+   by colour before you've finished counting its sides */
+const SIDE_COL = { 3: '#FF7A9C', 4: '#5FD9C6', 5: '#C08BFF', 6: '#7FA8FF' };
+const colOf = s => SIDE_COL[s] || '#C7F2DF';
+function shade(hex, f){
+  const n = parseInt(hex.slice(1), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+    .map(v => Math.max(0, Math.min(255, Math.round(v * f))));
+  return '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+/* A fight has to be a fixed object, not a fresh roll — otherwise nothing is
+   learnable, retrying means nothing, and no two players see the same thing.
+   Every choice below runs off a seed derived from the fight index. */
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+let foe = null, foeIndex = 0, pieceSeed = 1;
+let markers = [];
+
+/* Pieces are fully independent. Nothing coordinates them, because nothing
+   needs to: one tap is direction-free, so it answers everything landing on
+   its slot. Coincidences are chords, not conflicts. */
+function assignPhases(pieces, shiftP, rnd){
+  const used = new Set();
+  for (const p of pieces){
+    p.shift = rnd() < shiftP ? SHIFTS[1] : SHIFTS[0];
+    /* two pieces of the same shape must not play in unison — that reads as
+       one piece and wastes a track */
+    let off = (rnd() * p.period) | 0;
+    for (let k = 0; k < p.period && used.has(p.period + ':' + off + ':' + p.shift); k++)
+      off = (off + 1) % p.period;
+    p.offset = off;
+    used.add(p.period + ':' + off + ':' + p.shift);
+  }
+}
+let campaign = true, rhythmNo = 1, reached = 1;
+let summary = null;
+let stat = { shots: 0, answered: 0, perfect: 0, missed: 0 };
+
+function currentSpec(){
+  if (campaign) return genRhythm(rhythmNo);
+  const g = genRhythm(foeIndex + 1);
+  g.seed = (Math.random() * 1e9) | 0;      // endless stays a roll of the dice
+  return g;
+}
+function makeFoe(atBeat){
+  const spec = currentSpec();
+  tune = { key: spec.key, prog: spec.prog };
+  kit = KITS[spec.kit % KITS.length];
+  bassLine = BASSES[spec.bass % BASSES.length];
+  const rnd = mulberry32(spec.seed);
+  const comp = spec.comp;
+  const pieces = comp.map((sides, i) => {
+    /* Bigger shapes are tougher. They throw less often, so they outlast the
+       small ones — that spread is the personality, and chords keep it moving. */
+    const hp = 3 + sides + spec.hpBonus;
+    return {
+      id: pieceSeed++, sides, period: sides,
+      offset: 0, shift: 0,
+      col: colOf(sides), dup: 0,
+      hp, maxhp: hp,
+      alive: true, punch: 0, flash: 0, throwBeat: -99,
+      fall: null, x: 0, y: 0
+    };
+  });
+  /* duplicates of a shape get shaded apart, or two hexagons on nearby
+     bearings read as one piece you can't tell the shots of */
+  const seenShape = {};
+  for (const q of pieces){
+    q.dup = seenShape[q.sides] = (seenShape[q.sides] || 0) + 1;
+    if (q.dup > 1) q.col = shade(q.col, 1 - (q.dup - 1) * 0.26);
+  }
+  assignPhases(pieces, spec.shiftP, rnd);
+  foe = { pieces, bornBeat: atBeat };
+  paintHUD();
+}
+const alivePieces = () => foe ? foe.pieces.filter(p => p.alive) : [];
+/* everything is quantised to eighths, so slots are integers again */
+const slotKey = b => Math.round(b * 2);
+
+/* A piece never changes. One shot, every `sides` beats, at the same point in
+   the bar, for as long as it lives. Everything legible here rests on that. */
+function throwsAt(p, b){
+  if (!foe || b < foe.bornBeat || !p.alive) return false;
+  return (((b - p.offset) % p.period) + p.period) % p.period === 0;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SCHEDULER
+   ══════════════════════════════════════════════════════════════ */
+function scheduleBeat(i, t){
+  if (mode === 'cal'){ click(t); return; }
+  const inBar = i % 4, bar = Math.floor(i / 4);
+  const semi = semiAt(i);
+  const H = SPB / 2, Q = SPB / 4;
+
+  if (inBar === 0 || inBar === 2) kick(t);
+  if (inBar === 1 || inBar === 3) snare(t);
+  /* a fill on the last bar of every four — the single clearest signal that
+     the music is going somewhere rather than looping */
+  if (bar % 4 === 3 && inBar === 3){
+    snare(t + H, true); snare(t + H + Q, true); kick(t + H + Q * 1.5);
+  }
+
+  /* the arrangement builds with the chain, so playing well is audible */
+  if (combo >= 4){ hat(t, false); hat(t + H, true); }
+  if (combo >= 10 && inBar % 2 === 1) hat(t + Q, true);
+  if (combo >= 18 && inBar === 0) pad(t, semi);
+  if (combo >= 30) arpNote(t + H, semi, i);
+
+  for (let k = 0; k < 2; k++){
+    const d = bassLine[inBar * 2 + k];
+    if (d != null) bassNote(t + k * H, semi + d);
+  }
+
+  if (!foe && i >= nextFoeBeat){
+    if (!campaign) foeIndex++;
+    makeFoe(i + 4);
+  }
+  if (!foe) return;
+
+  /* each living piece is a voice; break it and the voice goes away */
+  for (const p of foe.pieces)
+    if (p.alive && throwsAt(p, i)) pieceNote(beatTime(i + p.shift), p.sides, semi);
+
+  const far = i + LOOK;
+  for (const p of alivePieces()){
+    if (!throwsAt(p, far)) continue;
+    p.throwBeat = i;
+    stat.shots++;
+    markers.push({ pid: p.id, sides: p.sides, col: p.col,
+                   beat: far + p.shift, resolved: false, hitFx: 0, tele: false });
+  }
+  /* telegraph a beat ahead, at the exact fractional time */
+  for (const m of markers){
+    if (m.tele || m.resolved) continue;
+    if (m.beat >= i + 1 && m.beat < i + 2){
+      m.tele = true;
+      telegraph(beatTime(m.beat - 1), m.sides, semiAt(m.beat));
+    }
+  }
+}
+let nextFoeBeat = 0;
+function scheduler(){
+  if (!ac || mode === 'idle') return;
+  /* Phones throttle setInterval while the audio clock keeps running.
+     Resync to the grid instead of dumping the backlog. */
+  if (beatTime(nextIdx) < ac.currentTime - 0.25){
+    nextIdx = Math.ceil((ac.currentTime - originTime) / SPB);
+    markers = [];
+  }
+  while (beatTime(nextIdx) < ac.currentTime + LOOKAHEAD){
+    scheduleBeat(nextIdx, beatTime(nextIdx));
+    nextIdx++;
+  }
+}
+function startClock(m, countIn){
+  mode = m;
+  originTime = ac.currentTime + countIn;
+  nextIdx = 0;
+  foe = null; foeIndex = -1; nextFoeBeat = 2;
+  markers = [];
+  clearInterval(timer);
+  timer = setInterval(scheduler, TICK);
+  scheduler();
+}
+function stopAll(){
+  clearInterval(timer); timer = null; mode = 'idle';
+  foe = null; markers = [];
+  if (!ac) return;
+  const old = bus, t = ac.currentTime;
+  old.gain.setValueAtTime(old.gain.value, t);
+  old.gain.linearRampToValueAtTime(0.0001, t + 0.04);
+  setTimeout(() => { try { old.disconnect(); } catch (e) {} }, 120);
+  bus = ac.createGain(); bus.connect(master);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && mode !== 'idle'){ stopAll(); show('scr-title'); if (ac) ac.suspend(); }
+});
+
+/* ══════════════════════════════════════════════════════════════
+   COMBAT
+   ══════════════════════════════════════════════════════════════ */
+let combo = 0, bestCombo = 0;
+let deathless = true;   // default: chain-only, no fail state
+let hp = 5; const MAXHP = 5, HEAL_EVERY = 25;
+let nextHeal = HEAL_EVERY;
+let hurtFx = 0, healFx = 0;
+let hitStopUntil = 0, frozenBeat = 0;
+let shake = 0, pulse = 0, flash = 0, flashRGB = '255,201,107';
+let ringFx = 0, lastActBeat = -1;
+let lunge = 0, lungeHot = 0, lastAng = -Math.PI / 2;
+const pops = [], parts = [];
+
+function breakCombo(){ combo = 0; nextHeal = HEAL_EVERY; paintHUD(); }
+/* the chain is the goal, so the chain is what keeps you alive */
+function checkHeal(){
+  if (combo < nextHeal) return;
+  nextHeal += HEAL_EVERY;
+  if (hp >= MAXHP) return;
+  hp++; healFx = 1;
+  healSnd();
+  flash = Math.max(flash, 0.22); flashRGB = '199,242,223';
+  pops.push({ txt: 'RECOVERED', ms: null, born: performance.now(), bad: false });
+  paintHUD();
+}
+const pieceById = id => foe ? foe.pieces.find(p => p.id === id) : null;
+
+function damage(p, n){
+  if (!p || !p.alive) return;
+  p.hp -= n; p.punch = 1;
+  if (p.hp <= 0){
+    p.alive = false;
+    p.fall = { vx: (Math.random() - 0.5) * 4, vy: -2.5, rot: (Math.random() - 0.5) * 0.2, life: 1 };
+    breakSnd(p.sides);
+    burstAt(p.x, p.y, 26, true, p.col);
+    flash = 0.2; flashRGB = '199,242,223';
+    shake = Math.max(shake, 12);
+    /* its shots in the air lose their thrower and shatter */
+    for (const m of markers)
+      if (m.pid === p.id && !m.resolved){
+        /* These kept flying inward, full colour, for a third of a second —
+           long enough to aim at a shot that no longer existed. */
+        m.resolved = true; m.voided = true; m.hitFx = 0.5;
+        stat.shots--;          // it died with its thrower — never chargeable
+      }
+    pops.push({ txt: 'BROKEN', ms: null, born: performance.now(), bad: false });
+    if (!alivePieces().length){
+      foeDownSnd();
+      foe = null;
+      flash = 0.3; flashRGB = '255,201,107';
+      if (campaign) finishRhythm();
+      else nextFoeBeat = Math.ceil(beatNow()) + 6;
+    }
+  }
+  paintHUD();
+}
+function resolveInput(atAudioTime){
+  const now = atAudioTime - calOffset;
+  const b = Math.round((now - originTime) / SPB * 2) / 2;
+  const pnow = performance.now();
+
+  if (slotKey(b) === lastActBeat){ fail('ONE PER SLOT', whiffSnd); return; }
+
+  /* A chord is shots on the SAME slot — not merely shots that are close.
+     Two shots a half-beat apart are 117ms apart, so a tap between them lands
+     inside the window of both; grouping by proximity silently ate the second
+     one and made it unhittable. Group by slot instead. */
+  const hits = markers.filter(x => !x.resolved &&
+                                   slotKey(x.beat) === slotKey(b) &&
+                                   Math.abs(now - beatTime(x.beat)) <= W_HIT);
+  if (!hits.length){
+    /* A mistimed tap must cost exactly one thing. It used to burn the slot of
+       the shot you were reaching for, so that shot became unanswerable and then
+       counted as missed too — two chain breaks and an impossible note for a
+       single mistake. Now the swing simply takes the shot it was aimed at. */
+    /* Only a shot that has ALREADY gone past can be taken by a late swing.
+       A rushed tap must never destroy a note that hasn't arrived — that was a
+       90ms dead zone before every note, and with notes close together a tap
+       aimed at the next one landed in it and annihilated it unseen. */
+    let late = null, ld = Infinity;
+    for (const x of markers){
+      if (x.resolved) continue;
+      const d = now - beatTime(x.beat);          // positive = already past
+      if (d > 0 && d < ld){ ld = d; late = x; }
+    }
+    if (late && ld <= W_CLAIM){
+      late.resolved = true; late.hitFx = 0.5; stat.missed++;
+      /* burn the slot of the note actually taken, not of the rounded tap time —
+         a late swing at one note was locking out the next one */
+      lastActBeat = slotKey(late.beat);
+      fail('TOO SLOW', whiffSnd);
+    } else {
+      /* Rushed, or nothing there. Costs the chain and nothing else — the slot
+         stays open so the note you were reaching for is still yours to take. */
+      fail('EARLY', whiffSnd);
+    }
+    return;
+  }
+  lastActBeat = slotKey(hits[0].beat);
+
+  const bd = Math.min(...hits.map(x => Math.abs(now - beatTime(x.beat))));
+  const perfect = bd <= W_PERFECT;
+  const crowd = beatsToNext(Math.max(...hits.map(x => x.beat))) < 0.8 ? 0.45 : 1;
+  const lead = pieceById(hits[0].pid);
+  if (lead && lead.ang != null) lastAng = lead.ang;
+  for (const m of hits){
+    m.resolved = true; m.hitFx = 1;
+    const p = pieceById(m.pid);
+    stat.answered++; if (perfect) stat.perfect++;
+    damage(p, perfect ? 3 : 1);
+    burstAtRing(perfect ? 14 : 7, perfect, p && p.ang, m.col);
+  }
+
+  combo += hits.length + (perfect ? 1 : 0);
+  bestCombo = Math.max(bestCombo, combo);
+  checkHeal();
+  ringFx = 1; lunge = 1;
+  chordSnd(hits, perfect, semiAt(Math.max(...hits.map(x => x.beat))));
+
+  hitStopUntil = pnow + HITSTOP * 1000 * (perfect ? 1.4 : 0.55) * crowd;
+  shake = perfect ? (10 + hits.length * 3) : 5;
+  if (perfect){ flash = 0.22; flashRGB = '255,201,107'; }
+  lungeHot = perfect ? 1 : 0.4;
+  pops.push({
+    txt: hits.length > 1 ? 'CHORD ×' + hits.length : perfect ? 'PERFECT' : 'HIT',
+    ms: Math.round(bd * 1000), born: pnow, bad: false
+  });
+  frozenBeat = beatNow();
+  paintHUD();
+}
+/* freeze less when the next shot is already close, or the pause eats
+   the approach you need to read */
+function beatsToNext(after){
+  let best = 99;
+  for (const x of markers)
+    if (!x.resolved && x.beat > after) best = Math.min(best, x.beat - after);
+  return best;
+}
+function fail(txt, snd){
+  breakCombo(); (snd || whiffSnd)();
+  shake = Math.max(shake, 5);
+  flash = 0.14; flashRGB = '226,78,107';
+  pops.push({ txt, ms: null, born: performance.now(), bad: true });
+}
+function burstAt(x, y, n, hot, col){
+  for (let i = 0; i < n; i++){
+    const a = Math.random() * Math.PI * 2, s = (hot ? 3.2 : 1.9) * (0.5 + Math.random());
+    parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+                 life: 1, sz: hot ? 4 : 3, hot, col });
+  }
+}
+function burstAtRing(n, hot, ang, col){
+  const a = ang == null ? lastAng : ang;
+  burstAt(px(a, R0()), py(a, R0()), n, hot, col);
+}
+
+function reap(){
+  const now = ac.currentTime - calOffset;
+  for (const m of markers){
+    /* Reaping at W_HIT made the late-tap branch unreachable: a note vanished
+       at +80ms while a swing could claim one until +170ms, so being slightly
+       late reported EARLY on a note that had already been counted missed. */
+    if (m.resolved || now <= beatTime(m.beat) + W_CLAIM) continue;
+    m.resolved = true; m.miss = true; m.hitFx = 1; stat.missed++;
+    hurtSnd(); breakCombo();
+    shake = Math.max(shake, 11);
+    flash = 0.24; flashRGB = '226,78,107';
+    hurtFx = 1;
+    const p = pieceById(m.pid); if (p) p.flash = 1;
+    if (!deathless){
+      hp--; paintHUD();
+      if (hp <= 0){ down(); return; }
+    }
+    pops.push({ txt: 'HIT TAKEN', ms: null, born: performance.now(), bad: true });
+  }
+  markers = markers.filter(m => now < beatTime(m.beat) + 0.7);
+}
+function down(){
+  stopAll();
+  $('down-foes').textContent = Math.max(0, foeIndex - 1);
+  $('down-chain').textContent = bestCombo;
+  show('scr-down');
+}
+
+/* ══════════════════════════════════════════════════════════════
+   INPUT — one verb, so nothing to classify. Resolves on contact.
+   ══════════════════════════════════════════════════════════════ */
+function tapNow(){
+  if (!ac || mode !== 'play') return;
+  lunge = 1; lungeHot = 0;
+  resolveInput(ac.currentTime);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   RENDER — one lane, straight down.
+   ══════════════════════════════════════════════════════════════ */
+const cv = document.getElementById('c'), cx = cv.getContext('2d');
+let CW = 0, CH = 0, DPR = 1;
+function resize(){
+  DPR = Math.min(devicePixelRatio || 1, 2);
+  CW = innerWidth; CH = innerHeight;
+  cv.width = CW * DPR; cv.height = CH * DPR;
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+/* Radial: you're in the middle, attacks converge from every direction.
+   Distance is time in all of them, so no direction reads differently. */
+const cxx = () => CW / 2;
+const cyy = () => CH * 0.52;
+const R0  = () => 62;                                   // the arrival circle
+const R1  = () => Math.min(CW * 0.44, CH * 0.40);       // where shots appear
+const radAt = bu => R0() + (R1() - R0()) * Math.max(0, Math.min(1.05, bu / LOOK));
+const px = (a, r) => cxx() + Math.cos(a) * r;
+const py = (a, r) => cyy() + Math.sin(a) * r;
+
+function hexA(hex, a){
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+function poly(g, x, y, r, sides, rot, fill, stroke, lw){
+  g.beginPath();
+  for (let i = 0; i < sides; i++){
+    const a = rot + (i / sides) * Math.PI * 2 - Math.PI / 2;
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    i ? g.lineTo(px, py) : g.moveTo(px, py);
+  }
+  g.closePath();
+  if (fill){ g.fillStyle = fill; g.fill(); }
+  if (stroke){ g.strokeStyle = stroke; g.lineWidth = lw || 2; g.stroke(); }
+}
+
+function frame(){
+  requestAnimationFrame(frame);
+  const pnow = performance.now();
+  const frozen = pnow < hitStopUntil;
+  const bn = ac && mode !== 'idle' ? (frozen ? frozenBeat : beatNow()) : 0;
+  if (ac && mode === 'play' && !frozen) reap();
+
+  const phase = bn - Math.floor(bn);
+  if (!frozen){
+    pulse += ((phase < 0.14 ? 1 : 0) - pulse) * 0.22;
+    shake *= 0.86; flash *= 0.86; ringFx *= 0.88; hurtFx *= 0.9; healFx *= 0.92;
+    lunge *= 0.80; lungeHot *= 0.88;
+    if (foe) for (const p of foe.pieces){
+      p.punch *= 0.85; p.flash *= 0.88;
+      if (p.fall){
+        p.fall.vy += 0.55; p.x += p.fall.vx; p.y += p.fall.vy;
+        p.fall.life -= 0.016;
+        if (p.fall.life <= 0) p.fall = null;
+      }
+    }
+    for (const m of markers) m.hitFx *= m.voided ? 0.74 : 0.85;
+  }
+
+  cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  cx.fillStyle = '#04140F'; cx.fillRect(0, 0, CW, CH);
+  const rg = cx.createRadialGradient(cxx(), cyy(), 0, cxx(), cyy(), Math.max(CW, CH) * 0.75);
+  rg.addColorStop(0, `rgba(10,42,34,${0.85 + pulse * 0.15})`);
+  rg.addColorStop(1, 'rgba(4,20,15,1)');
+  cx.fillStyle = rg; cx.fillRect(0, 0, CW, CH);
+
+  if (mode !== 'play'){ drawPops(pnow); drawFlash(); return; }
+
+  const sx = (Math.random() - 0.5) * shake, sy = (Math.random() - 0.5) * shake;
+  cx.save(); cx.translate(sx, sy);
+  cx.textAlign = 'center';
+
+  const OX = cxx(), OY = cyy(), r0 = R0(), r1 = R1();
+  const pxPerBeat = (r1 - r0) / LOOK;
+  const hitR  = pxPerBeat * (W_HIT / SPB);
+  const perfR = pxPerBeat * (W_PERFECT / SPB);
+
+  /* Sonar: one ring per beat, contracting to touch the circle exactly on the
+     beat. The grid subdivides into half-beats only when something in the fight
+     actually plays off the beat — otherwise an &-shot floats between rings with
+     nothing to measure it against, and you're left interpolating by eye. */
+  const offbeat = foe && foe.pieces.some(q => q.alive && q.shift);
+  const step = offbeat ? 0.5 : 1;
+  for (let k = 0; k <= LOOK / step; k++){
+    const bu = k * step - phase;
+    if (bu < -0.15) continue;
+    const half = offbeat && (k % 2 === 1);
+    const r = radAt(bu);
+    const near = 1 - Math.min(1, Math.max(0, bu) / 1.5);
+    const fade = 1 - (k * step) / (LOOK + 1);
+    /* Every fourth ring is a bar line. The drums are in 4/4 but the pieces
+       run in 3s, 5s and 6s — without a visible bar you have nothing to count
+       a hexagon against, which is most of why it feels like guesswork. */
+    const bar = !half && ((Math.floor(bn) + Math.round(k * step)) % 4 === 0);
+    if (half){
+      cx.setLineDash([4, 6]);
+      cx.strokeStyle = `rgba(94,140,124,${0.03 + 0.10 * fade + near * 0.16})`;
+      cx.lineWidth = 1;
+    } else if (bar){
+      cx.setLineDash([]);
+      cx.strokeStyle = `rgba(199,242,223,${0.10 + 0.24 * fade + near * 0.40})`;
+      cx.lineWidth = 1.5 + near * 1.8;
+    } else {
+      cx.setLineDash([]);
+      cx.strokeStyle = `rgba(94,140,124,${0.05 + 0.18 * fade + near * 0.28})`;
+      cx.lineWidth = 1 + near * 1.4;
+    }
+    cx.beginPath(); cx.arc(OX, OY, r, 0, 7); cx.stroke();
+  }
+  cx.setLineDash([]);
+
+  // ── the arrival circle, with the windows as annuli the pulse crosses
+  const onBar = Math.floor(bn) % 4 === 0;
+  cx.strokeStyle = `rgba(199,242,223,${pulse * (onBar ? 0.5 : 0.22)})`;
+  cx.lineWidth = 2 + pulse * (onBar ? 5 : 2);
+  cx.beginPath(); cx.arc(OX, OY, r0, 0, 7); cx.stroke();
+  cx.strokeStyle = 'rgba(94,140,124,.28)';
+  cx.lineWidth = hitR * 2;
+  cx.beginPath(); cx.arc(OX, OY, r0, 0, 7); cx.stroke();
+  cx.strokeStyle = `rgba(255,201,107,${0.22 + ringFx * 0.35})`;
+  cx.lineWidth = Math.max(1.5, perfR * 2);
+  cx.beginPath(); cx.arc(OX, OY, r0, 0, 7); cx.stroke();
+
+  // ── pieces sit around you; each owns a direction
+  if (foe){
+    const n = foe.pieces.length;
+    foe.pieces.forEach((p, i) => {
+      if (p.ang == null) p.ang = -Math.PI / 2 + (i / n) * Math.PI * 2;
+      if (!p.fall){ p.x = px(p.ang, r1 + 30); p.y = py(p.ang, r1 + 30); }
+      if (!p.alive && !p.fall) return;
+
+      // its lane, drawn faintly so the eye stays at the centre
+      if (p.alive){
+        const g2 = cx.createLinearGradient(px(p.ang, r0), py(p.ang, r0),
+                                           px(p.ang, r1), py(p.ang, r1));
+        g2.addColorStop(0, hexA(p.col, 0.30));
+        g2.addColorStop(1, hexA(p.col, 0.04));
+        cx.strokeStyle = g2; cx.lineWidth = 1;
+        cx.beginPath();
+        cx.moveTo(px(p.ang, r0 + 3), py(p.ang, r0 + 3));
+        cx.lineTo(px(p.ang, r1), py(p.ang, r1));
+        cx.stroke();
+      }
+
+      const thrown = Math.max(0, 1 - (bn - p.throwBeat) / 1.1);
+      const sz = 24 * (1 + p.punch * 0.45 + thrown * 0.3);
+      cx.globalAlpha = p.fall ? Math.max(0, p.fall.life) : 1;
+      if (p.flash > 0.02){ cx.shadowBlur = 26 * p.flash; cx.shadowColor = '#E24E6B'; }
+      poly(cx, p.x, p.y, sz, p.sides, p.fall ? bn * 0.6 : bn * 0.08,
+           p.flash > 0.35 ? '#E24E6B' : p.col);
+      cx.shadowBlur = 0;
+      if (p.alive){
+        cx.font = '400 9px "IBM Plex Mono", monospace';
+        cx.fillStyle = hexA(p.col, 0.8);
+        cx.fillText('/' + p.period + (p.shift ? ' &' : ''), p.x, p.y + sz + 13);
+        for (let h = 0; h < p.maxhp; h++){
+          cx.fillStyle = h < p.hp ? p.col : 'rgba(94,140,124,.26)';
+          cx.fillRect(p.x - (p.maxhp * 6) / 2 + h * 6, p.y + sz + 19, 4, 3);
+        }
+      }
+      cx.globalAlpha = 1;
+    });
+  } else if (summary){
+    const age = Math.min(1, (pnow - summary.born) / 3400);
+    const fade = age < 0.12 ? age / 0.12 : 1 - Math.max(0, (age - 0.75) / 0.25);
+    cx.globalAlpha = Math.max(0, fade);
+    cx.font = '700 clamp(46px,13vw,74px) "Chakra Petch", sans-serif';
+    cx.fillStyle = '#FFC96B';
+    cx.fillText(summary.rank, OX, OY - r1 * 0.35);
+    cx.font = '400 11px "IBM Plex Mono", monospace';
+    cx.fillStyle = 'rgba(199,242,223,.75)';
+    cx.fillText('RHYTHM ' + summary.n + ' CLEARED', OX, OY - r1 * 0.35 - 54);
+    cx.fillStyle = 'rgba(94,140,124,.9)';
+    cx.fillText(summary.hit + '/' + summary.shots + ' hit    ' + summary.perfect
+              + ' perfect    chain ' + summary.chain, OX, OY - r1 * 0.35 + 26);
+    cx.globalAlpha = 1;
+  } else if (campaign){
+    cx.font = '400 11px "IBM Plex Mono", monospace';
+    cx.fillStyle = `rgba(94,140,124,${0.4 + pulse * 0.35})`;
+    cx.fillText('RHYTHM ' + rhythmNo, OX, OY - r1 * 0.5);
+  }
+
+  // ── shots ride the rings inward
+  for (const m of markers.slice().sort((a, b) => b.beat - a.beat)){
+    const bu = m.beat - bn;
+    if (bu > LOOK + 0.5) continue;
+    if (m.resolved && m.hitFx < 0.02) continue;
+    const src = pieceById(m.pid);
+    const a = src && src.ang != null ? src.ang : -Math.PI / 2;
+    const r = radAt(bu);
+    const near = 1 - Math.min(1, Math.max(0, bu) / 1.6);
+    const sz = 13 * (1 + near * 0.3 + m.hitFx * 0.7);
+    const mc = m.col || '#C7F2DF';
+    if (m.voided){
+      /* cancelled: hollow, grey, shrinking — unmistakably not a live shot */
+      cx.globalAlpha = m.hitFx * 0.8;
+      poly(cx, px(a, r), py(a, r), sz * (0.4 + m.hitFx * 0.4), m.sides,
+           bn * 0.14 + a, null, 'rgba(94,140,124,.9)', 1.5);
+      cx.globalAlpha = 1;
+      continue;
+    }
+    cx.globalAlpha = m.resolved ? m.hitFx : 1;
+    if (near > 0.35){ cx.shadowBlur = 20 * near; cx.shadowColor = m.miss ? '#E24E6B' : mc; }
+    poly(cx, px(a, r), py(a, r), sz * (m.miss ? 0.6 + m.hitFx * 0.5 : 1),
+         m.sides, bn * 0.14 + a,
+         m.miss ? '#E24E6B' : m.hitFx > 0.2 ? '#FFC96B' : mc);
+    cx.shadowBlur = 0;
+    cx.globalAlpha = 1;
+  }
+
+  // ── you: a shockwave answers outward when you connect
+  if (ringFx > 0.02){
+    cx.strokeStyle = `rgba(255,201,107,${ringFx * 0.8})`;
+    cx.lineWidth = 1 + ringFx * 3;
+    cx.beginPath(); cx.arc(OX, OY, r0 * (1 - ringFx * 0.55), 0, 7); cx.stroke();
+  }
+  /* You are a circle — every shape on the field encodes a period by its side
+     count, so the one thing you must never look like is a polygon. */
+  const reach = lunge * (r0 - 24);
+  const hx = OX + Math.cos(lastAng) * reach, hy = OY + Math.sin(lastAng) * reach;
+  const pr = 15 * (1 + pulse * 0.12 + lunge * 0.3);
+  if (lungeHot > 0.1){ cx.shadowBlur = 26 * lungeHot; cx.shadowColor = '#FFC96B'; }
+  cx.fillStyle = lungeHot > 0.25 ? '#FFC96B' : '#C7F2DF';
+  cx.beginPath(); cx.arc(hx, hy, pr, 0, 7); cx.fill();
+  cx.shadowBlur = 0;
+  cx.strokeStyle = `rgba(4,20,15,${0.5 + pulse * 0.3})`;
+  cx.lineWidth = 2;
+  cx.beginPath(); cx.arc(hx, hy, pr * 0.45, 0, 7); cx.stroke();
+
+  if (combo > 1){
+    cx.font = '700 clamp(26px,7vw,42px) "Chakra Petch", sans-serif';
+    cx.fillStyle = `rgba(255,201,107,${0.16 + Math.min(0.5, combo / 40)})`;
+    cx.textAlign = 'left';
+    cx.fillText(combo, 18, CH - 34);
+    cx.font = '400 10px "IBM Plex Mono", monospace';
+    cx.fillStyle = 'rgba(94,140,124,.7)';
+    cx.fillText('CHAIN', 18, CH - 20);
+    cx.textAlign = 'center';
+  }
+
+  for (let i = parts.length - 1; i >= 0; i--){
+    const p = parts[i];
+    if (!frozen){ p.x += p.vx * 2.4; p.y += p.vy * 2.4; p.life -= 0.028; }
+    if (p.life <= 0){ parts.splice(i, 1); continue; }
+    cx.globalAlpha = p.life;
+    cx.fillStyle = p.hot ? '#FFC96B' : (p.col || '#FF7A3D');
+    cx.fillRect(p.x - p.sz / 2, p.y - p.sz / 2, p.sz, p.sz);
+  }
+  cx.globalAlpha = 1;
+  cx.restore();
+
+  drawPops(pnow);
+  drawFlash();
+}
+function drawPops(pnow){
+  for (let i = pops.length - 1; i >= 0; i--){
+    const p = pops[i];
+    const age = (pnow - p.born) / 750;
+    if (age > 1){ pops.splice(i, 1); continue; }
+    cx.globalAlpha = 1 - age;
+    cx.textAlign = 'center';
+    cx.font = '700 19px "Chakra Petch", sans-serif';
+    cx.fillStyle = p.bad ? '#E24E6B' : (p.txt === 'PARRY' || p.txt === 'BROKEN' ? '#FFC96B' : '#C7F2DF');
+    cx.fillText(p.txt, cxx(), cyy() + R0() + 42 - age * 26);
+    if (p.ms != null){
+      cx.font = '400 10px "IBM Plex Mono", monospace';
+      cx.fillStyle = 'rgba(199,242,223,.5)';
+      cx.fillText(p.ms + 'ms', cxx(), cyy() + R0() + 58 - age * 26);
+    }
+    cx.globalAlpha = 1;
+  }
+}
+function drawFlash(){
+  if (flash > 0.01){
+    cx.fillStyle = `rgba(${flashRGB},${flash * 0.11})`;
+    cx.fillRect(0, 0, CW, CH);
+  }
+}
+requestAnimationFrame(frame);
+
+document.querySelectorAll('.ic').forEach(el => {
+  const sides = +el.dataset.sides;
+  el.width = 56; el.height = 56;
+  const g = el.getContext('2d'); g.scale(2, 2);
+  poly(g, 14, 14, 12, sides, 0, colOf(sides));
+});
+
+/* ══════════════════════════════════════════════════════════════
+   HUD / CALIBRATION / FLOW
+   ══════════════════════════════════════════════════════════════ */
+const $ = id => document.getElementById(id);
+function paintHUD(){
+  $('comboV').textContent = combo;
+  $('multV').textContent = bestCombo;
+  $('foeV').textContent = campaign ? rhythmNo : Math.max(1, foeIndex + 1);
+  paintCycle();
+}
+/* How long before the whole thing repeats: the least common multiple of the
+   living periods. This is the number the game is actually about. */
+function paintCycle(){
+  const live = alivePieces().map(p => p.period);
+  $('cycV').innerHTML = live.length
+    ? lcmOf(live) + '<span style="font-size:11px">b</span>' : '—';
+}
+
+const CAL_N = 8;
+let taps = [];
+for (let i = 0; i < CAL_N; i++){
+  const d = document.createElement('div'); d.className = 'tap'; d.id = 'tap' + i;
+  $('taps').appendChild(d);
+}
+function calTap(now){
+  const b = Math.round((now - originTime) / SPB);
+  if (b < 0) return;
+  const delta = now - beatTime(b);
+  if (Math.abs(delta) > SPB / 2) return;
+  taps.push(delta);
+  const el = $('tap' + Math.min(taps.length - 1, CAL_N - 1));
+  if (el) el.classList.add('lit');
+  $('cal-read').textContent = `${taps.length} / ${CAL_N}`;
+  if (taps.length >= CAL_N) finishCal();
+}
+function finishCal(){
+  stopAll();
+  const s = taps.slice().sort((a, b) => a - b);
+  const mid = s.slice(1, s.length - 1);
+  calOffset = mid.reduce((a, b) => a + b, 0) / mid.length;
+  const spread = Math.round((s[s.length - 2] - s[1]) * 1000);
+  $('cal-read').innerHTML = `offset <b>${Math.round(calOffset * 1000)}ms</b> · spread ${spread}ms`;
+  $('btn-go').classList.remove('hidden');
+  $('btn-go').focus();
+}
+function show(id){
+  for (const s of document.querySelectorAll('.screen')) s.classList.add('hidden');
+  if (id) $(id).classList.remove('hidden');
+  $('btn-stop').classList.toggle('hidden', !!id);
+}
+async function ensureAudio(){
+  if (!ac) initAudio();
+  if (ac.state === 'suspended') await ac.resume();
+}
+$('btn-cal').onclick = async () => {
+  await ensureAudio(); taps = [];
+  for (let i = 0; i < CAL_N; i++) $('tap' + i).classList.remove('lit');
+  $('cal-read').textContent = 'listening…';
+  $('btn-go').classList.add('hidden');
+  show('scr-cal'); startClock('cal', 0.9);
+};
+$('btn-go').onclick = () => show('scr-title');
+$('btn-home').onclick = () => show('scr-title');
+
+async function startRhythm(n){
+  await ensureAudio();
+  campaign = true; rhythmNo = Math.max(1, n); play();
+}
+/* No screen, no pause, no button. The drums keep running, the card fades in
+   over the field, and the next fight walks on eight beats later. Stopping the
+   audio to show statistics turns playing into paperwork. */
+function finishRhythm(){
+  const acc = stat.shots ? Math.round(stat.answered / stat.shots * 100) : 0;
+  const pf = stat.answered ? Math.round(stat.perfect / stat.answered * 100) : 0;
+  summary = {
+    born: performance.now(), n: rhythmNo, acc, pf,
+    hit: stat.answered, shots: stat.shots, perfect: stat.perfect,
+    chain: bestCombo, missed: stat.missed,
+    rank: acc >= 100 && pf >= 80 ? 'S' : acc >= 95 && pf >= 55 ? 'A'
+        : acc >= 88 ? 'B' : acc >= 70 ? 'C' : 'D'
+  };
+  /* per-session. To persist on your own site, save `reached` here and read
+     it back on load. */
+  reached = Math.max(reached, rhythmNo + 1);
+  rhythmNo++;
+  stat = { shots: 0, answered: 0, perfect: 0, missed: 0 };
+  bestCombo = 0;                       // the live chain carries over; the record doesn't
+  nextFoeBeat = Math.ceil(beatNow()) + 8;
+  paintHUD(); paintTitle();
+}
+$('btn-endless').onclick = async () => { await ensureAudio(); campaign = false; play(); };
+$('btn-start').onclick = () => startRhythm(reached);
+$('btn-again').onclick = () => startRhythm(rhythmNo);
+function paintDeath(){
+  const t = 'Health mode: ' + (deathless ? 'off' : 'on');
+  $('btn-death').textContent = t;
+  $('btn-death2').textContent = t;
+}
+$('btn-death').onclick = () => { deathless = !deathless; paintDeath(); };
+$('btn-death2').onclick = () => { deathless = !deathless; paintDeath(); };
+$('btn-restart').onclick = () => { reached = 1; paintTitle(); startRhythm(1); };
+function paintTitle(){
+  $('btn-start').textContent = reached > 1 ? 'Continue — rhythm ' + reached : 'Start';
+  $('btn-restart').classList.toggle('hidden', reached <= 1);
+}
+
+function play(){
+  show(null);
+  summary = null;
+  stat = { shots: 0, answered: 0, perfect: 0, missed: 0 };
+  combo = 0; bestCombo = 0; lastActBeat = -1; lunge = 0; lungeHot = 0;
+  hp = MAXHP; hurtFx = 0; healFx = 0; nextHeal = HEAL_EVERY;
+  pops.length = 0; parts.length = 0;
+  paintHUD();
+  startClock('play', 2.0);
+}
+
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.code === 'Escape' && mode !== 'idle'){ stopAll(); show('scr-title'); return; }
+  if (mode === 'cal' && e.code === 'Space'){ e.preventDefault(); calTap(ac.currentTime); return; }
+  if (mode !== 'play') return;
+  if (e.code === 'Space' || e.code === 'KeyJ' || e.code === 'KeyF' || e.code.startsWith('Arrow')){
+    e.preventDefault(); tapNow();
+  }
+});
+cv.addEventListener('pointerdown', e => {
+  if (!ac || mode === 'idle') return;
+  e.preventDefault();
+  if (mode === 'cal'){ calTap(ac.currentTime); return; }
+  tapNow();
+});
+paintHUD(); paintDeath(); paintTitle();
+</script>
+</body>
+</html>
