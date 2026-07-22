@@ -65,6 +65,20 @@
   .tap.lit{background:var(--signal);border-color:var(--signal)}
   kbd{font-family:"IBM Plex Mono",monospace;font-size:11px;border:1px solid rgba(94,140,124,.5);padding:2px 7px;color:var(--foam)}
   .hidden{display:none}
+  .jump{display:flex;align-items:center;gap:8px;margin-top:2px;
+        font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;
+        text-transform:uppercase;color:var(--dim)}
+  .jump input{width:64px;background:none;border:1px solid rgba(94,140,124,.4);
+        color:var(--foam);font-family:"IBM Plex Mono",monospace;font-size:13px;
+        padding:5px 6px;text-align:center;border-radius:0}
+  .jump button{padding:5px 11px;font-size:12px}
+  .ed-shapes{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .ed-shape{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .ed-shape .n{font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--foam)}
+  .ed-shape .pm{display:flex;gap:4px}
+  .ed-shape .pm button{padding:3px 9px;font-size:12px}
+  .ed-row{display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
+  .ed-row button{padding:6px 10px;font-size:10px}
   .rank{font-family:"Chakra Petch",sans-serif;font-weight:700;font-size:clamp(58px,17vw,96px);
         line-height:.9;color:var(--gold)}
   .stats{display:grid;grid-template-columns:auto auto;gap:6px 22px;font-size:12px;color:var(--dim)}
@@ -99,6 +113,13 @@
     <button class="ghost" id="btn-cal">Calibrate</button>
     <button class="ghost" id="btn-death">Health mode: off</button>
     <button class="ghost" id="btn-endless">Endless</button>
+    <button class="ghost" id="btn-edit">Editor</button>
+  </div>
+  <div class="jump">
+    <button class="ghost" id="jump-down">&minus;</button>
+    <label for="jumpN">rhythm</label>
+    <input id="jumpN" type="number" min="1" value="1" inputmode="numeric">
+    <button class="ghost" id="jump-up">+</button>
   </div>
 </div>
 
@@ -110,6 +131,25 @@
     <button class="ghost" id="btn-home">Title</button>
   </div>
   <button class="ghost" id="btn-death2" style="margin-top:-6px">Health mode: off</button>
+</div>
+
+<div class="screen hidden" id="scr-edit">
+  <h1 style="font-size:clamp(19px,5vw,28px)">RHYTHM <em>EDITOR</em></h1>
+  <div class="ed-shapes" id="ed-shapes"></div>
+  <div class="ed-row">
+    <button class="ghost" id="ed-key">key</button>
+    <button class="ghost" id="ed-prog">chords</button>
+    <button class="ghost" id="ed-kit">kit</button>
+    <button class="ghost" id="ed-bass">bass</button>
+    <button class="ghost" id="ed-roll">reroll offsets</button>
+  </div>
+  <div class="readout" id="ed-read">—</div>
+  <div class="row">
+    <button id="ed-preview">Preview</button>
+    <button class="ghost" id="ed-play">Play it</button>
+    <button class="ghost" id="ed-link">Copy link</button>
+    <button class="ghost" id="ed-back">Back</button>
+  </div>
 </div>
 
 <div class="screen hidden" id="scr-cal">
@@ -140,35 +180,60 @@ const beatNow  = () => (ac.currentTime - calOffset - originTime) / SPB;
 /* ── synthesis ─────────────────────────────────────────────── */
 function initAudio(){
   ac = new (window.AudioContext || window.webkitAudioContext)();
-  master = ac.createGain(); master.gain.value = 0.85;
-  const comp = ac.createDynamicsCompressor();
-  comp.threshold.value = -12; comp.ratio.value = 6;
-  master.connect(comp).connect(ac.destination);
+  master = ac.createGain(); master.gain.value = 0.72;
+  /* A brick wall, not a compressor. Threshold well below 0dBFS, no knee,
+     fast attack — this is what stops crowded sections from clipping. */
+  const lim = ac.createDynamicsCompressor();
+  lim.threshold.value = -6;
+  lim.knee.value = 0;
+  lim.ratio.value = 20;
+  lim.attack.value = 0.002;
+  lim.release.value = 0.12;
+  const out = ac.createGain(); out.gain.value = 0.9;   // headroom after makeup
+  master.connect(lim); lim.connect(out); out.connect(ac.destination);
   bus = ac.createGain(); bus.connect(master);
   const n = ac.sampleRate * 0.5;
   noiseBuf = ac.createBuffer(1, n, ac.sampleRate);
   const d = noiseBuf.getChannelData(0);
   for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
 }
-function env(t, peak, dur, node){
+/* Voice budget. Under load the arrangement thins from the top instead of
+   the output tearing: prio 2 goes first (telegraph, hats, pad, arp), then
+   prio 1 (piece notes, bass). Hits and the kick/snare are never gated —
+   those are feedback, and a missing hit sound is worse than a click. */
+let liveVoices = 0;
+const MAX_VOICES = 24;
+function budget(prio){ return liveVoices < MAX_VOICES - prio * 5; }
+
+function env(t, peak, dur, node, src){
+  liveVoices++;
   const g = ac.createGain();
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(peak, t + 0.004);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
   node.connect(g).connect(bus);
+  /* pull the voice out of the graph once it has finished sounding, or the
+     node count climbs all session and CPU with it */
+  const ms = Math.max(60, (t - ac.currentTime + dur + 0.25) * 1000);
+  setTimeout(() => {
+    /* the source's link to its filter has to go too, or one connection per
+       voice survives and the graph still grows all session */
+    try { if (src) src.disconnect(); node.disconnect(); g.disconnect(); } catch (e) {}
+    liveVoices = liveVoices > 0 ? liveVoices - 1 : 0;
+  }, ms);
   return g;
 }
 function noise(t, dur, type, freq, peak){
   const s = ac.createBufferSource(); s.buffer = noiseBuf;
   const f = ac.createBiquadFilter(); f.type = type; f.frequency.value = freq;
-  s.connect(f); env(t, peak, dur, f);
+  s.connect(f); env(t, peak, dur, f, s);
   s.start(t); s.stop(t + dur + 0.02);
 }
 function tone(t, freq, dur, peak, type, cut){
   const o = ac.createOscillator(); o.type = type || 'triangle';
   o.frequency.value = freq;
   const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = cut || 3000;
-  o.connect(f); env(t, peak, dur, f);
+  o.connect(f); env(t, peak, dur, f, o);
   o.start(t); o.stop(t + dur + 0.05);
 }
 /* Each rhythm gets its own kit and bassline. One bar of drums looped forever
@@ -201,29 +266,33 @@ function snare(t, soft){
   noise(t, kit.s[1] * (soft ? 0.55 : 1), 'bandpass', kit.s[0], kit.s[2] * (soft ? 0.45 : 1));
 }
 function hat(t, soft){
+  if (!budget(2)) return;
   noise(t, soft ? kit.h[1] : kit.h[2], 'highpass', kit.h[0], soft ? 0.08 : 0.15);
 }
 /* a soft triad under the bar, so the chord changes are audible as harmony */
 function pad(t, semi){
+  if (!budget(2)) return;
   [0, 3, 7].forEach((iv, n) => {
     const o = ac.createOscillator(); o.type = 'sawtooth';
     o.frequency.value = 147 * Math.pow(2, (semi + iv) / 12);
     o.detune.value = n * 4 - 4;
     const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 900;
-    o.connect(f); env(t, 0.055, 1.5, f); o.start(t); o.stop(t + 1.6);
+    o.connect(f); env(t, 0.055, 1.5, f, o); o.start(t); o.stop(t + 1.6);
   });
 }
 function arpNote(t, semi, step){
+  if (!budget(2)) return;
   const iv = [0, 7, 12, 15][step % 4];
   tone(t, 294 * Math.pow(2, (semi + iv) / 12), 0.16, 0.07, 'triangle', 5000);
 }
 function bassNote(t, semi){
+  if (!budget(1)) return;
   const o = ac.createOscillator(); o.type = 'sawtooth';
   o.frequency.value = 55 * Math.pow(2, semi / 12);
   const f = ac.createBiquadFilter(); f.type = 'lowpass';
   f.frequency.setValueAtTime(900, t);
   f.frequency.exponentialRampToValueAtTime(180, t + 0.22);
-  o.connect(f); env(t, 0.34, 0.26, f); o.start(t); o.stop(t + 0.3);
+  o.connect(f); env(t, 0.34, 0.26, f, o); o.start(t); o.stop(t + 0.3);
 }
 function click(t){
   const o = ac.createOscillator(); o.type = 'square'; o.frequency.value = 1400;
@@ -242,6 +311,7 @@ const hzOf = (sides, semi) =>
 /* each living piece plays an ostinato on its own period: the polyrhythm
    you see in the body is the polyrhythm you hear */
 function pieceNote(t, sides, semi){
+  if (!budget(1)) return;
   const o = ac.createOscillator(); o.type = SIDE_WAVE[sides] || 'sawtooth';
   /* the hexagon sits a fifth below everything; an octave down from there put
      it at 147Hz, under the kick and inaudible on a phone */
@@ -249,10 +319,11 @@ function pieceNote(t, sides, semi){
   const f = ac.createBiquadFilter(); f.type = 'lowpass';
   f.frequency.setValueAtTime(1100, t);
   f.frequency.exponentialRampToValueAtTime(280, t + 0.24);
-  o.connect(f); env(t, sides === 6 ? 0.4 : 0.3, 0.28, f);
+  o.connect(f); env(t, sides === 6 ? 0.4 : 0.3, 0.28, f, o);
   o.start(t); o.stop(t + 0.32);
 }
 function telegraph(t, sides, semi){
+  if (!budget(2)) return;
   tone(t, hzOf(sides, semi) * 2, 0.06, 0.15, 'triangle', 3600);
 }
 function parrySnd(){
@@ -272,25 +343,42 @@ function hitHz(sides, semi){
   while (f >= 988) f /= 2;
   return f;
 }
+/* A hit was a static filter at 5.2kHz for 170ms: nothing moves, so it reads
+   as stiff, and the cutoff sits below where a pluck's bite lives, so it reads
+   as muted. Open the filter on the attack and let it close as it decays. */
+function hitVoice(t, hz, perfect){
+  const o = ac.createOscillator();
+  o.type = perfect ? 'square' : 'sawtooth';
+  o.frequency.value = hz;
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 1.1;
+  f.frequency.setValueAtTime(perfect ? 9200 : 7600, t);
+  f.frequency.exponentialRampToValueAtTime(perfect ? 2600 : 1900,
+                                           t + (perfect ? 0.26 : 0.22));
+  o.connect(f);
+  env(t, perfect ? 0.26 : 0.245, perfect ? 0.30 : 0.27, f, o);
+  o.start(t); o.stop(t + 0.36);
+}
+
 function chordSnd(hits, perfect, semi){
   const t = ac.currentTime;
-  const seen = new Set();
-  hits.forEach((m, i) => {
-    if (seen.has(m.sides)) return;
-    seen.add(m.sides);
-    /* A hit and a perfect differ by brightness and timbre, never by octave or
-       by loudness — a hit must always read as connecting. */
-    tone(t + i * 0.012, hitHz(m.sides, semi),
-         perfect ? 0.20 : 0.17, perfect ? 0.26 : 0.24,
-         perfect ? 'square' : 'sawtooth',
-         perfect ? 6800 : 5200);
-  });
+  /* One root, then consonant stacking. Letting every shape sound its own
+     pitch meant a /4 and a /3 landing together were always a whole tone
+     apart — the chord clashed every single time it happened. The first
+     shape names the note; the rest widen it. */
+  const root = hitHz(hits[0].sides, semi);
+  const STACK = [0, 7, 12, 19];
+  const voices = Math.min(hits.length, STACK.length);
+  for (let i = 0; i < voices; i++)
+    hitVoice(t, root * Math.pow(2, STACK[i] / 12), perfect);
+
   /* a short transient so a hit cuts through the kit instead of sitting behind it */
-  noise(t, perfect ? 0.035 : 0.028, 'highpass', perfect ? 7000 : 4500,
-        perfect ? 0.17 : 0.14);
+  noise(t, perfect ? 0.035 : 0.030, 'highpass', perfect ? 7000 : 4800,
+        perfect ? 0.17 : 0.15);
   if (perfect){
     noise(t, 0.05, 'highpass', 9000, 0.12);
-    tone(t + 0.015, hitHz(hits[0].sides, semi) * 1.5, 0.16, 0.10, 'sine', 9000);
+    /* an octave, sounding WITH the note: a fifth above the seventh is not in
+       the chord, and 15ms late it read as a second note rather than shine */
+    tone(t, root * 2, 0.16, 0.09, 'sine', 9000);
   }
 }
 function whiffSnd(){ noise(ac.currentTime, 0.07, 'lowpass', 520, 0.26); }
@@ -444,7 +532,11 @@ let campaign = true, rhythmNo = 1, reached = 1;
 let summary = null;
 let stat = { shots: 0, answered: 0, perfect: 0, missed: 0 };
 
+let customSpec = null;      // set by the editor; loops instead of advancing
+let autoPlay = false;       // preview: taps land exactly on the beat
+
 function currentSpec(){
+  if (customSpec) return Object.assign({}, customSpec);
   if (campaign) return genRhythm(rhythmNo);
   const g = genRhythm(foeIndex + 1);
   g.seed = (Math.random() * 1e9) | 0;      // endless stays a roll of the dice
@@ -689,8 +781,11 @@ function resolveInput(atAudioTime){
   const bd = Math.min(...hits.map(x => Math.abs(now - beatTime(x.beat))));
   const perfect = bd <= W_PERFECT;
   const crowd = beatsToNext(Math.max(...hits.map(x => x.beat))) < 0.8 ? 0.45 : 1;
+  const chord = hits.length > 1;
   const lead = pieceById(hits[0].pid);
-  if (lead && lead.ang != null) lastAng = lead.ang;
+  /* a chord is answered in every direction at once — leaning toward one of
+     them misreports what just happened */
+  if (!chord && lead && lead.ang != null) lastAng = lead.ang;
   for (const m of hits){
     m.resolved = true; m.hitFx = 1;
     const p = pieceById(m.pid);
@@ -702,13 +797,14 @@ function resolveInput(atAudioTime){
   combo += hits.length + (perfect ? 1 : 0);
   bestCombo = Math.max(bestCombo, combo);
   checkHeal();
-  ringFx = 1; lunge = 1;
+  ringFx = chord ? 1.35 : 1;
+  lunge = chord ? 0 : 1;
   chordSnd(hits, perfect, semiAt(Math.max(...hits.map(x => x.beat))));
 
   hitStopUntil = pnow + HITSTOP * 1000 * (perfect ? 1.4 : 0.55) * crowd;
   shake = perfect ? (10 + hits.length * 3) : 5;
   if (perfect){ flash = 0.22; flashRGB = '255,201,107'; }
-  lungeHot = perfect ? 1 : 0.4;
+  lungeHot = chord ? 0 : (perfect ? 1 : 0.4);
   pops.push({
     txt: hits.length > 1 ? 'CHORD ×' + hits.length : perfect ? 'PERFECT' : 'HIT',
     ms: Math.round(bd * 1000), born: pnow, bad: false
@@ -820,6 +916,21 @@ function poly(g, x, y, r, sides, rot, fill, stroke, lw){
 
 function frame(){
   requestAnimationFrame(frame);
+  /* Preview plays the rhythm as if performed flawlessly: each shot is answered
+     at exactly its beat time, which lands dead centre of the perfect window. */
+  if (autoPlay && ac && mode === 'play'){
+    const nowT = ac.currentTime - calOffset;
+    for (let guard = 0; guard < 8; guard++){
+      let next = null;
+      for (const m of markers){
+        if (m.resolved) continue;
+        const bt = beatTime(m.beat);
+        if (nowT >= bt && (!next || bt < beatTime(next.beat))) next = m;
+      }
+      if (!next) break;
+      resolveInput(beatTime(next.beat) + calOffset);
+    }
+  }
   const pnow = performance.now();
   const frozen = pnow < hitStopUntil;
   const bn = ac && mode !== 'idle' ? (frozen ? frozenBeat : beatNow()) : 0;
@@ -1130,6 +1241,10 @@ $('btn-cal').onclick = async () => {
   $('btn-go').classList.add('hidden');
   show('scr-cal'); startClock('cal', 0.9);
 };
+$('btn-stop').onclick = () => {
+  stopAll();
+  if (customSpec){ buildEditor(); show('scr-edit'); } else show('scr-title');
+};
 $('btn-go').onclick = () => show('scr-title');
 $('btn-home').onclick = () => show('scr-title');
 
@@ -1159,8 +1274,97 @@ function finishRhythm(){
   nextFoeBeat = Math.ceil(beatNow()) + 8;
   paintHUD(); paintTitle();
 }
-$('btn-endless').onclick = async () => { await ensureAudio(); campaign = false; play(); };
-$('btn-start').onclick = () => startRhythm(reached);
+$('btn-endless').onclick = async () => { await ensureAudio(); customSpec = null; autoPlay = false; campaign = false; play(); };
+/* ── rhythm selector ─────────────────────────────────────────────────
+   Jump straight to any rhythm. Also readable from the URL as ?r=12 so a
+   specific one can be linked or bookmarked while testing. */
+const jumpVal = () => Math.max(1, Math.min(999, parseInt($('jumpN').value, 10) || 1));
+function paintJump(){
+  $('btn-start').textContent = 'Start — rhythm ' + jumpVal();
+}
+$('jumpN').oninput = paintJump;
+$('jump-down').onclick = () => { $('jumpN').value = Math.max(1, jumpVal() - 1); paintJump(); };
+$('jump-up').onclick   = () => { $('jumpN').value = jumpVal() + 1; paintJump(); };
+$('btn-start').onclick = () => { customSpec = null; autoPlay = false; startRhythm(jumpVal()); };
+
+/* ── rhythm editor ───────────────────────────────────────────────────
+   Builds the same spec object the generator produces, so anything you make
+   here runs through the identical engine. */
+const ED = { comp: [4], key: 0, prog: 0, kit: 0, bass: 0, seed: 1234 };
+
+function edSpec(){
+  return { comp: ED.comp.slice(), key: KEYS[ED.key % KEYS.length],
+           prog: PROGS[ED.prog % PROGS.length], shiftP: 0, hpBonus: 0,
+           kit: ED.kit, bass: ED.bass, seed: ED.seed };
+}
+function edCycle(){
+  return ED.comp.length ? ED.comp.reduce((a, b) => a * b / gcd(a, b), 1) : 0;
+}
+function buildEditor(){
+  const wrap = $('ed-shapes'); wrap.innerHTML = '';
+  for (const sides of [3, 4, 5, 6]){
+    const cell = document.createElement('div'); cell.className = 'ed-shape';
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 44; cv.style.width = cv.style.height = '22px';
+    const g = cv.getContext('2d'); g.scale(2, 2);
+    poly(g, 11, 11, 9, sides, 0, colOf(sides));
+    const num = document.createElement('div'); num.className = 'n';
+    num.textContent = '/' + sides + ' ×' + ED.comp.filter(x => x === sides).length;
+    const pm = document.createElement('div'); pm.className = 'pm';
+    const minus = document.createElement('button'); minus.className = 'ghost';
+    minus.textContent = '\u2212';
+    const plus = document.createElement('button'); plus.className = 'ghost';
+    plus.textContent = '+';
+    minus.onclick = () => {
+      const i = ED.comp.lastIndexOf(sides);
+      if (i >= 0) ED.comp.splice(i, 1);
+      buildEditor();
+    };
+    plus.onclick = () => {
+      if (ED.comp.length < 6) ED.comp.push(sides);
+      ED.comp.sort((a, b) => a - b);
+      buildEditor();
+    };
+    pm.appendChild(minus); pm.appendChild(plus);
+    cell.appendChild(cv); cell.appendChild(num); cell.appendChild(pm);
+    wrap.appendChild(cell);
+  }
+  $('ed-key').textContent  = 'key ' + KEYS[ED.key % KEYS.length];
+  $('ed-prog').textContent = 'chords ' + (ED.prog % PROGS.length + 1);
+  $('ed-kit').textContent  = 'kit ' + (ED.kit % KITS.length + 1);
+  $('ed-bass').textContent = 'bass ' + (ED.bass % BASSES.length + 1);
+  const density = ED.comp.reduce((a, x) => a + 1 / x, 0);
+  $('ed-read').innerHTML = ED.comp.length
+    ? ED.comp.map(x => '/' + x).join(' ') + ' &middot; cycle <b>' + edCycle()
+      + '</b> beats &middot; ' + density.toFixed(2) + ' taps/beat'
+    : 'add at least one shape';
+  $('ed-preview').disabled = !ED.comp.length;
+  $('ed-play').disabled = !ED.comp.length;
+}
+function edStart(auto){
+  if (!ED.comp.length) return;
+  customSpec = edSpec();
+  autoPlay = auto;
+  campaign = false;
+  ensureAudio().then(play);
+}
+$('ed-key').onclick   = () => { ED.key++;  buildEditor(); };
+$('ed-prog').onclick  = () => { ED.prog++; buildEditor(); };
+$('ed-kit').onclick   = () => { ED.kit++;  buildEditor(); };
+$('ed-bass').onclick  = () => { ED.bass++; buildEditor(); };
+$('ed-roll').onclick  = () => { ED.seed = (Math.random() * 1e9) | 0; buildEditor(); };
+$('ed-preview').onclick = () => edStart(true);
+$('ed-play').onclick    = () => edStart(false);
+$('ed-back').onclick    = () => { customSpec = null; autoPlay = false; show('scr-title'); };
+$('ed-link').onclick = () => {
+  const q = '?c=' + ED.comp.join('.') + '&k=' + ED.key + '&p=' + ED.prog
+          + '&kit=' + ED.kit + '&b=' + ED.bass + '&s=' + ED.seed;
+  const url = location.origin + location.pathname + q;
+  try { navigator.clipboard.writeText(url); } catch (e) {}
+  $('ed-read').textContent = 'link copied';
+  setTimeout(buildEditor, 1200);
+};
+$('btn-edit').onclick = () => { buildEditor(); show('scr-edit'); };
 $('btn-again').onclick = () => startRhythm(rhythmNo);
 function paintDeath(){
   const t = 'Health mode: ' + (deathless ? 'off' : 'on');
@@ -1169,9 +1373,10 @@ function paintDeath(){
 }
 $('btn-death').onclick = () => { deathless = !deathless; paintDeath(); };
 $('btn-death2').onclick = () => { deathless = !deathless; paintDeath(); };
-$('btn-restart').onclick = () => { reached = 1; paintTitle(); startRhythm(1); };
+$('btn-restart').onclick = () => { reached = 1; customSpec = null; autoPlay = false; paintTitle(); startRhythm(1); };
 function paintTitle(){
-  $('btn-start').textContent = reached > 1 ? 'Continue — rhythm ' + reached : 'Start';
+  $('jumpN').value = reached;
+  paintJump();
   $('btn-restart').classList.toggle('hidden', reached <= 1);
 }
 
@@ -1201,7 +1406,25 @@ cv.addEventListener('pointerdown', e => {
   if (mode === 'cal'){ calTap(ac.currentTime); return; }
   tapNow();
 });
-paintHUD(); paintDeath(); paintTitle();
+(function readURL(){
+  const q = new URLSearchParams(location.search);
+  const r = parseInt(q.get('r'), 10);
+  if (r > 0){ reached = Math.max(reached, r); $('jumpN').value = r; }
+  const c = q.get('c');
+  if (c){
+    const comp = c.split('.').map(x => parseInt(x, 10)).filter(x => x >= 3 && x <= 6);
+    if (comp.length){
+      ED.comp = comp.sort((a, b) => a - b);
+      ED.key  = parseInt(q.get('k'), 10) || 0;
+      ED.prog = parseInt(q.get('p'), 10) || 0;
+      ED.kit  = parseInt(q.get('kit'), 10) || 0;
+      ED.bass = parseInt(q.get('b'), 10) || 0;
+      ED.seed = parseInt(q.get('s'), 10) || 1234;
+      buildEditor(); show('scr-edit');
+    }
+  }
+})();
+paintHUD(); paintDeath(); paintTitle(); paintJump();
 </script>
 </body>
 </html>
