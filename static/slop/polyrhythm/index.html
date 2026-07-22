@@ -65,6 +65,15 @@
   .tap.lit{background:var(--signal);border-color:var(--signal)}
   kbd{font-family:"IBM Plex Mono",monospace;font-size:11px;border:1px solid rgba(94,140,124,.5);padding:2px 7px;color:var(--foam)}
   .hidden{display:none}
+  .sound{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.14em;
+    text-transform:uppercase;color:var(--gold);border:1px solid rgba(255,201,107,.4);
+    padding:8px 14px;margin:0}
+  #hint{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(env(safe-area-inset-bottom) + 26px);z-index:12;
+    background:rgba(4,20,15,.92);border:1px solid rgba(255,201,107,.5);
+    color:var(--foam);font-family:"IBM Plex Mono",monospace;font-size:11px;
+    letter-spacing:.08em;padding:10px 16px;max-width:78vw;text-align:center;
+    transition:opacity .4s;pointer-events:none}
   .jump{display:flex;align-items:center;gap:8px;margin-top:2px;
         font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;
         text-transform:uppercase;color:var(--dim)}
@@ -91,9 +100,10 @@
 
 <canvas id="c"></canvas>
 <button id="btn-stop" class="ghost hidden">Stop</button>
+<div id="hint" class="hidden"></div>
 
 <div id="hud" aria-hidden="true">
-  <div class="cell"><div class="k">Combo</div><div class="v" id="comboV">0</div></div>
+  <div class="cell"><div class="k">Chain</div><div class="v" id="comboV">0</div></div>
   <div class="cell"><div class="k">Best</div><div class="v" id="multV">0</div></div>
   <div class="cell"><div class="k">Rhythm</div><div class="v" id="foeV">1</div></div>
   <div class="cell"><div class="k">Cycle</div><div class="v" id="cycV">—</div></div>
@@ -101,12 +111,14 @@
 
 <div class="screen" id="scr-title">
   <h1>POLY<em>RHYTHM</em></h1>
-  <p class="lede"><b>Sides are beats.</b> A triangle strikes every 3, a square every 4, a pentagon every 5. Each keeps its own pulse, forever, and together they make a polyrhythm — the <i>cycle</i> is how many beats pass before the whole pattern comes back around.</p>
+  <p class="sound">Turn your sound on.</p>
   <div class="gl">
-    <canvas class="ic" data-sides="3"></canvas><div>Rings contract one per beat. Tap when a shape reaches the circle — the <i>gold</i> edge is perfect, for double damage.</div>
-    <canvas class="ic" data-sides="5"></canvas><div>Tap nothing on the empty beats. Shots arriving together clear with one tap.</div>
-    <canvas class="ic" data-sides="6"></canvas><div>Each hit damages the piece that threw it. Break them all and the rhythm is yours.</div>
+    <canvas class="ic" data-sides="3"></canvas><div><b>Triangle</b> strikes every 3 beats</div>
+    <canvas class="ic" data-sides="4"></canvas><div><b>Square</b> every 4</div>
+    <canvas class="ic" data-sides="5"></canvas><div><b>Pentagon</b> every 5</div>
+    <canvas class="ic" data-sides="6"></canvas><div><b>Hexagon</b> every 6</div>
   </div>
+  <p class="lede">Rings close in, one per beat. Tap when a shape's <b>center</b> crosses the gold ring.<br><br>Hitting an empty beat breaks your chain.<br><br>Break every piece to clear the rhythm.</p>
   <button id="btn-start">Start</button>
   <div class="row">
     <button class="ghost" id="btn-restart">Restart at 1</button>
@@ -488,7 +500,7 @@ const semiAt = b => tune.key + tune.prog[Math.floor(Math.max(0, b) / 4) % tune.p
    never of a piece, so each one stays readable on its own. */
 const SHIFTS = [0, 0.5];
 /* hue carries identity: with several tracks running you attribute a shot
-   by colour before you've finished counting its sides */
+   by color before you've finished counting its sides */
 const SIDE_COL = { 3: '#FF7A9C', 4: '#5FD9C6', 5: '#C08BFF', 6: '#7FA8FF' };
 const colOf = s => SIDE_COL[s] || '#C7F2DF';
 function shade(hex, f){
@@ -700,7 +712,7 @@ function checkHeal(){
   hp++; healFx = 1;
   healSnd();
   flash = Math.max(flash, 0.22); flashRGB = '199,242,223';
-  pops.push({ txt: 'RECOVERED', ms: null, born: performance.now(), bad: false });
+  pushPop('RECOVERED', null, false);
   paintHUD();
 }
 const pieceById = id => foe ? foe.pieces.find(p => p.id === id) : null;
@@ -718,12 +730,12 @@ function damage(p, n){
     /* its shots in the air lose their thrower and shatter */
     for (const m of markers)
       if (m.pid === p.id && !m.resolved){
-        /* These kept flying inward, full colour, for a third of a second —
+        /* These kept flying inward, full color, for a third of a second —
            long enough to aim at a shot that no longer existed. */
         m.resolved = true; m.voided = true; m.hitFx = 0.5;
         stat.shots--;          // it died with its thrower — never chargeable
       }
-    pops.push({ txt: 'BROKEN', ms: null, born: performance.now(), bad: false });
+    pushPop('BROKEN', null, false);
     if (!alivePieces().length){
       foeDownSnd();
       foe = null;
@@ -764,7 +776,7 @@ function resolveInput(atAudioTime){
       if (d > 0 && d < ld){ ld = d; late = x; }
     }
     if (late && ld <= W_CLAIM){
-      late.resolved = true; late.hitFx = 0.5; stat.missed++;
+      late.resolved = true; late.hitFx = 0.5; stat.missed++; checkSilent();
       /* burn the slot of the note actually taken, not of the rounded tap time —
          a late swing at one note was locking out the next one */
       lastActBeat = slotKey(late.beat);
@@ -805,10 +817,8 @@ function resolveInput(atAudioTime){
   shake = perfect ? (10 + hits.length * 3) : 5;
   if (perfect){ flash = 0.22; flashRGB = '255,201,107'; }
   lungeHot = chord ? 0 : (perfect ? 1 : 0.4);
-  pops.push({
-    txt: hits.length > 1 ? 'CHORD ×' + hits.length : perfect ? 'PERFECT' : 'HIT',
-    ms: Math.round(bd * 1000), born: pnow, bad: false
-  });
+  pushPop(hits.length > 1 ? 'CHORD ×' + hits.length : perfect ? 'PERFECT' : 'HIT',
+           Math.round(bd * 1000), false);
   frozenBeat = beatNow();
   paintHUD();
 }
@@ -824,7 +834,7 @@ function fail(txt, snd){
   breakCombo(); (snd || whiffSnd)();
   shake = Math.max(shake, 5);
   flash = 0.14; flashRGB = '226,78,107';
-  pops.push({ txt, ms: null, born: performance.now(), bad: true });
+  pushPop(txt, null, true);
 }
 function burstAt(x, y, n, hot, col){
   for (let i = 0; i < n; i++){
@@ -845,7 +855,7 @@ function reap(){
        at +80ms while a swing could claim one until +170ms, so being slightly
        late reported EARLY on a note that had already been counted missed. */
     if (m.resolved || now <= beatTime(m.beat) + W_CLAIM) continue;
-    m.resolved = true; m.miss = true; m.hitFx = 1; stat.missed++;
+    m.resolved = true; m.miss = true; m.hitFx = 1; stat.missed++; checkSilent();
     hurtSnd(); breakCombo();
     shake = Math.max(shake, 11);
     flash = 0.24; flashRGB = '226,78,107';
@@ -855,7 +865,7 @@ function reap(){
       hp--; paintHUD();
       if (hp <= 0){ down(); return; }
     }
-    pops.push({ txt: 'HIT TAKEN', ms: null, born: performance.now(), bad: true });
+    pushPop('HIT TAKEN', null, true);
   }
   markers = markers.filter(m => now < beatTime(m.beat) + 0.7);
 }
@@ -917,7 +927,7 @@ function poly(g, x, y, r, sides, rot, fill, stroke, lw){
 function frame(){
   requestAnimationFrame(frame);
   /* Preview plays the rhythm as if performed flawlessly: each shot is answered
-     at exactly its beat time, which lands dead centre of the perfect window. */
+     at exactly its beat time, which lands dead center of the perfect window. */
   if (autoPlay && ac && mode === 'play'){
     const nowT = ac.currentTime - calOffset;
     for (let guard = 0; guard < 8; guard++){
@@ -1006,15 +1016,22 @@ function frame(){
 
   // ── the arrival circle, with the windows as annuli the pulse crosses
   const onBar = Math.floor(bn) % 4 === 0;
-  cx.strokeStyle = `rgba(199,242,223,${pulse * (onBar ? 0.5 : 0.22)})`;
-  cx.lineWidth = 2 + pulse * (onBar ? 5 : 2);
-  cx.beginPath(); cx.arc(OX, OY, r0, 0, 7); cx.stroke();
-  cx.strokeStyle = 'rgba(94,140,124,.28)';
+  /* the beat pulse sits just OUTSIDE the target as a halo — drawn on top of
+     it, a foam ring of similar weight washed the gold out entirely */
+  cx.strokeStyle = `rgba(199,242,223,${pulse * (onBar ? 0.34 : 0.15)})`;
+  cx.lineWidth = 2 + pulse * (onBar ? 4 : 1.5);
+  cx.beginPath(); cx.arc(OX, OY, r0 + hitR + 5, 0, 7); cx.stroke();
+  /* the hit window, dim */
+  cx.strokeStyle = 'rgba(94,140,124,.30)';
   cx.lineWidth = hitR * 2;
   cx.beginPath(); cx.arc(OX, OY, r0, 0, 7); cx.stroke();
-  cx.strokeStyle = `rgba(255,201,107,${0.22 + ringFx * 0.35})`;
-  cx.lineWidth = Math.max(1.5, perfR * 2);
+  /* the perfect window. This is the thing the instructions name, so it has to
+     be unmistakably gold: opaque, with a glow to lift it off the teal. */
+  cx.shadowBlur = 10 + ringFx * 20; cx.shadowColor = '#FFC96B';
+  cx.strokeStyle = `rgba(255,201,107,${0.8 + ringFx * 0.2})`;
+  cx.lineWidth = Math.max(3.5, perfR * 2);
   cx.beginPath(); cx.arc(OX, OY, r0, 0, 7); cx.stroke();
+  cx.shadowBlur = 0;
 
   // ── pieces sit around you; each owns a direction
   if (foe){
@@ -1024,7 +1041,7 @@ function frame(){
       if (!p.fall){ p.x = px(p.ang, r1 + 30); p.y = py(p.ang, r1 + 30); }
       if (!p.alive && !p.fall) return;
 
-      // its lane, drawn faintly so the eye stays at the centre
+      // its lane, drawn faintly so the eye stays at the center
       if (p.alive){
         const g2 = cx.createLinearGradient(px(p.ang, r0), py(p.ang, r0),
                                            px(p.ang, r1), py(p.ang, r1));
@@ -1087,7 +1104,7 @@ function frame(){
     const sz = 13 * (1 + near * 0.3 + m.hitFx * 0.7);
     const mc = m.col || '#C7F2DF';
     if (m.voided){
-      /* cancelled: hollow, grey, shrinking — unmistakably not a live shot */
+      /* canceled: hollow, gray, shrinking — unmistakably not a live shot */
       cx.globalAlpha = m.hitFx * 0.8;
       poly(cx, px(a, r), py(a, r), sz * (0.4 + m.hitFx * 0.4), m.sides,
            bn * 0.14 + a, null, 'rgba(94,140,124,.9)', 1.5);
@@ -1147,6 +1164,14 @@ function frame(){
   drawPops(pnow);
   drawFlash();
 }
+/* Two things can resolve on the same tap — a perfect that also breaks a piece.
+   Every pop drew at the same y, so they printed exactly on top of each other.
+   Give each one a lane against whatever is already on screen. */
+function pushPop(txt, ms, bad){
+  const now = performance.now();
+  const busy = pops.filter(q => now - q.born < 380).length;
+  pops.push({ txt, ms, bad, born: now, lane: Math.min(busy, 3) });
+}
 function drawPops(pnow){
   for (let i = pops.length - 1; i >= 0; i--){
     const p = pops[i];
@@ -1156,11 +1181,12 @@ function drawPops(pnow){
     cx.textAlign = 'center';
     cx.font = '700 19px "Chakra Petch", sans-serif';
     cx.fillStyle = p.bad ? '#E24E6B' : (p.txt === 'PARRY' || p.txt === 'BROKEN' ? '#FFC96B' : '#C7F2DF');
-    cx.fillText(p.txt, cxx(), cyy() + R0() + 42 - age * 26);
+    const y = cyy() + R0() + 42 - age * 26 + (p.lane || 0) * 21;
+    cx.fillText(p.txt, cxx(), y);
     if (p.ms != null){
       cx.font = '400 10px "IBM Plex Mono", monospace';
       cx.fillStyle = 'rgba(199,242,223,.5)';
-      cx.fillText(p.ms + 'ms', cxx(), cyy() + R0() + 58 - age * 26);
+      cx.fillText(p.ms + 'ms', cxx(), y + 16);
     }
     cx.globalAlpha = 1;
   }
@@ -1380,9 +1406,33 @@ function paintTitle(){
   $('btn-restart').classList.toggle('hidden', reached <= 1);
 }
 
+let hintShown = false;
+function showHint(txt, ms){
+  const el = $('hint');
+  el.textContent = txt;
+  el.classList.remove('hidden');
+  el.style.opacity = '1';
+  clearTimeout(showHint._t);
+  showHint._t = setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.classList.add('hidden'), 420);
+  }, ms || 5200);
+}
+/* Missing nearly everything early almost always means one thing: the sound is
+   off. A rhythm game played silently is unplayable, and the player has no way
+   to know that's why — they just conclude they're bad at it. */
+function checkSilent(){
+  if (hintShown || !campaign) return;
+  if (stat.missed >= 5 && stat.answered <= 1){
+    hintShown = true;
+    showHint('Can you hear the drums? Sound must be on.', 7000);
+  }
+}
+
 function play(){
   show(null);
   summary = null;
+  $('hint').classList.add('hidden');
   stat = { shots: 0, answered: 0, perfect: 0, missed: 0 };
   combo = 0; bestCombo = 0; lastActBeat = -1; lunge = 0; lungeHot = 0;
   hp = MAXHP; hurtFx = 0; healFx = 0; nextHeal = HEAL_EVERY;
