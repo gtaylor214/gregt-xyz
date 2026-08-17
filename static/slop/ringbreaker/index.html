@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>RINGBREAKER — a 360° brick breaker</title>
+<style>
+  :root{
+    --void:#120A18;
+    --void2:#1D0F24;
+    --bone:#F2E4CF;
+    --ember:#FF9E3D;
+    --coral:#FF6B4A;
+    --dim:rgba(242,228,207,.42);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--void);overflow:hidden;
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    color:var(--bone);-webkit-tap-highlight-color:transparent}
+  canvas{display:block;position:fixed;inset:0;touch-action:none}
+
+  .hud{position:fixed;inset:0;pointer-events:none;padding:14px 16px;
+    display:flex;flex-direction:column;justify-content:space-between}
+  .row{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+  .stat{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);line-height:1.9}
+  .stat b{display:block;font-size:20px;letter-spacing:.06em;color:var(--bone);font-weight:500}
+  .stat.r{text-align:right}
+  .lives{display:flex;gap:6px;justify-content:flex-end;margin-top:6px}
+  .life{width:9px;height:9px;border-radius:50%;background:var(--ember);
+    box-shadow:0 0 10px rgba(255,158,61,.8)}
+  .life.off{background:transparent;box-shadow:none;border:1px solid rgba(242,228,207,.25)}
+
+  .overlay{position:fixed;inset:0;display:none;place-items:center;text-align:center;
+    background:radial-gradient(circle at 50% 50%,rgba(18,10,24,.55),rgba(18,10,24,.92));padding:24px}
+  .overlay.on{display:grid}
+  .title{font-size:clamp(22px,6.4vw,50px);letter-spacing:.22em;margin:0 0 6px;font-weight:500;
+    text-indent:.22em;white-space:nowrap}
+  .sub{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--ember);margin-bottom:22px}
+  .keys{font-size:11px;letter-spacing:.12em;color:var(--dim);line-height:2.1;text-transform:uppercase}
+  .keys em{font-style:normal;color:var(--bone)}
+  .prompt{margin-top:24px;font-size:12px;letter-spacing:.24em;text-transform:uppercase;
+    animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.35}50%{opacity:1}}
+
+  .tune{position:fixed;right:12px;bottom:12px;pointer-events:auto;font-size:10px;
+    letter-spacing:.14em;text-transform:uppercase;color:var(--dim);z-index:5}
+  .tune button{font:inherit;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);
+    background:rgba(242,228,207,.06);border:1px solid rgba(242,228,207,.18);
+    padding:7px 11px;border-radius:2px;cursor:pointer}
+  .tune button:hover{color:var(--bone);border-color:rgba(242,228,207,.4)}
+  .panel{display:none;margin-top:8px;background:rgba(29,15,36,.94);
+    border:1px solid rgba(242,228,207,.16);padding:12px 13px;width:210px;border-radius:2px}
+  .panel.on{display:block}
+  .panel label{display:block;margin-bottom:11px}
+  .panel span{display:flex;justify-content:space-between;color:var(--dim);margin-bottom:5px}
+  .panel span i{font-style:normal;color:var(--ember)}
+  input[type=range]{width:100%;height:2px;-webkit-appearance:none;appearance:none;
+    background:rgba(242,228,207,.22);outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:11px;height:11px;
+    border-radius:50%;background:var(--ember);cursor:pointer}
+  input[type=range]::-moz-range-thumb{width:11px;height:11px;border:0;border-radius:50%;
+    background:var(--ember);cursor:pointer}
+  :focus-visible{outline:2px solid var(--ember);outline-offset:3px}
+  @media (prefers-reduced-motion:reduce){.prompt{animation:none;opacity:.8}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div class="hud">
+  <div class="row">
+    <div class="stat">Score<b id="score">0</b></div>
+    <div class="stat r">Level<b id="level">1</b>
+      <div class="lives" id="lives"></div>
+    </div>
+  </div>
+  <div class="row"><div class="stat" id="combo"></div></div>
+</div>
+
+<div class="overlay on" id="overlay">
+  <div>
+    <h1 class="title" id="oTitle">RINGBREAKER</h1>
+    <div class="sub" id="oSub">a 360° brick breaker</div>
+    <div class="keys" id="oKeys">
+      <em>move</em> mouse or drag &nbsp;·&nbsp; <em>or</em> ← → / A D<br>
+      <em>launch</em> release click, or space &nbsp;·&nbsp; <em>pause</em> P<br>
+      <em>mute</em> M &nbsp;·&nbsp; <em>restart</em> R
+    </div>
+    <div class="prompt" id="oPrompt">click to start</div>
+  </div>
+</div>
+
+<div class="tune">
+  <button id="tuneBtn" aria-expanded="false">Tuning</button>
+  <div class="panel" id="panel">
+    <label><span>Ball speed <i id="vBallSpeed"></i></span>
+      <input type="range" id="sBallSpeed" min="0.5" max="2.2" step="0.05"></label>
+    <label><span>Ring spin <i id="vSpin"></i></span>
+      <input type="range" id="sSpin" min="0" max="3" step="0.05"></label>
+    <label><span>Paddle size <i id="vArc"></i></span>
+      <input type="range" id="sArc" min="14" max="60" step="1"></label>
+    <label><span>Steering <i id="vSteer"></i></span>
+      <input type="range" id="sSteer" min="0" max="1.1" step="0.02"></label>
+    <label><span>Core gravity <i id="vGrav"></i></span>
+      <input type="range" id="sGrav" min="-1.2" max="1.2" step="0.05"></label>
+    <label style="margin-bottom:0"><span>Clear at <i id="vClear"></i></span>
+      <input type="range" id="sClear" min="80" max="100" step="1"></label>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+// ---------------------------------------------------------------- constants
+const TAU = Math.PI * 2;
+const norm = a => ((a % TAU) + TAU) % TAU;
+const angDiff = (a,b) => { let d = norm(a-b); return d > Math.PI ? d - TAU : d; };
+const clamp = (v,a,b) => v < a ? a : v > b ? b : v;
+const lerp = (a,b,t) => a + (b-a)*t;
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+// All geometry is in "arena units": 1.0 == arena radius. Scaled to px at draw time.
+const cfg = {
+  ballSpeed: 1.05,     // units / second — stage-1 ceiling; ramps within and across stages
+  spinMul: 1.0,        // multiplier on ring rotation
+  arcDeg: 35,          // paddle half-arc at stage 1, degrees; shrinks 3° per stage to 18°
+  steer: 0.62,         // radians of steering at the paddle edge
+  gravity: 0.0,        // + pulls to core, - pushes to rim (curves paths, keeps speed)
+  clearPct: 100,       // % of bricks needed to clear; the rest are swept for bonus
+};
+
+const CORE_R = 0.145;
+const PADDLE_R = 0.885;      // outer edge of paddle
+const PADDLE_T = 0.038;      // thickness
+const BALL_R = 0.017;
+const HEAT = ["#FF6B4A","#F2913C","#D9B25A","#8FBFA8","#6E9BD1"];
+
+// ---------------------------------------------------------------- canvas
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
+let W = 0, H = 0, CX = 0, CY = 0, S = 1;   // S = px per arena unit
+
+function resize(){
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  CX = W/2; CY = H/2;
+  S = Math.min(W,H)/2 * 0.94;
+}
+addEventListener("resize", resize);
+resize();
+
+// ---------------------------------------------------------------- audio
+let ac = null, muted = false;
+function audio(){ if(!ac) ac = new (AudioContext || webkitAudioContext)(); return ac; }
+function blip(freq, dur=0.07, type="square", vol=0.07){
+  if(muted) return;
+  try{
+    const a = audio(), o = a.createOscillator(), g = a.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, a.currentTime);
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+    o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+  }catch(e){}
+}
+function crunch(vol=0.07, dur=0.09, cut=1200){
+  if(muted) return;
+  try{
+    const a = audio(), n = Math.floor(a.sampleRate*dur);
+    const buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+    for(let i=0;i<n;i++) d[i] = (Math.random()*2-1) * Math.pow(1 - i/n, 2.2);
+    const src = a.createBufferSource(); src.buffer = buf;
+    const f = a.createBiquadFilter(); f.type = "lowpass";
+    f.frequency.setValueAtTime(cut, a.currentTime);
+    const g = a.createGain(); g.gain.setValueAtTime(vol, a.currentTime);
+    src.connect(f).connect(g).connect(a.destination); src.start();
+  }catch(e){}
+}
+function sweep(f0, f1, dur=0.3, vol=0.09){
+  if(muted) return;
+  try{
+    const a = audio(), o = a.createOscillator(), g = a.createGain();
+    o.type = "triangle";
+    o.frequency.setValueAtTime(f0, a.currentTime);
+    o.frequency.exponentialRampToValueAtTime(f1, a.currentTime + dur);
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
+    o.connect(g).connect(a.destination); o.start(); o.stop(a.currentTime + dur);
+  }catch(e){}
+}
+
+// ---------------------------------------------------------------- state
+const G = {
+  mode: "menu",          // menu | ready | play | dead | over | clear | pause
+  score: 0, level: 1, lives: 3, combo: 0,
+  bricksTotal: 0, bricksLeft: 0,
+  paddle: -Math.PI/2, paddleVel: 0, paddleTarget: -Math.PI/2,
+  ball: {x:0, y:0, vx:0, vy:0},
+  trail: [], parts: [], waves: [],
+  rings: [], shake: 0, freeze: 0, coreGlow: 0, t: 0, aiming: false,
+};
+
+// ---- difficulty curve -------------------------------------------------
+// Floor comes down, ceiling stays put: stage 1 is wide and slow, the ramp
+// happens inside each stage (as bricks fall) and again across stages.
+const ARC_FLOOR = 18, ARC_STEP = 3;
+function halfArc(){                       // radians
+  return Math.max(ARC_FLOOR, cfg.arcDeg - ARC_STEP*(G.level-1)) * Math.PI/180;
+}
+function halfArcDeg(){ return Math.max(ARC_FLOOR, cfg.arcDeg - ARC_STEP*(G.level-1)); }
+function speedRange(n = G.level){
+  return [cfg.ballSpeed * (0.74 + 0.03*(n-1)),   // opening tempo
+          cfg.ballSpeed * (1.00 + 0.05*(n-1))];  // tempo with one brick left
+}
+function ringCount(n){ return clamp(2 + Math.floor(n/2), 2, 5); }
+function spinRamp(n){ return Math.min(1, 0.5 + 0.12*(n-1)); }
+function targetSpeed(){
+  const [a,b] = speedRange();
+  const t = G.bricksTotal ? 1 - G.bricksLeft/G.bricksTotal : 0;
+  return lerp(a, b, t);
+}
+
+function makeLevel(n){
+  const k = ringCount(n);
+  const lo = 0.27, hi = 0.70, gap = 0.042;
+  const band = Math.min(0.062, (hi - lo - gap*(k-1)) / k);
+  const rings = [];
+  for(let i=0;i<k;i++){
+    const inner = hi - band - (k-1-i)*(band+gap);
+    const segs = 12 + i*3;
+    const cells = new Array(segs).fill(0).map(() => ({
+      alive: true, hp: (n >= 4 && i === 0) ? 2 : 1, flash: 0
+    }));
+    // aperture: one contiguous gap per ring. Rings spin at different rates, so
+    // the gaps drift in and out of alignment into a channel down to the core.
+    const gapLen = 2 + (i % 2);
+    const gapStart = Math.floor(Math.random()*segs);
+    for(let g=0; g<gapLen; g++) cells[(gapStart+g) % segs].alive = false;
+    rings.push({
+      inner, outer: inner + band,
+      baseInner: inner, baseOuter: inner + band,
+      drift: 0, spinScale: 1,
+      segs,
+      rot: Math.random()*TAU,
+      spin: (i%2 ? -1 : 1) * (0.10 + 0.022*n + 0.02*i) * spinRamp(n),
+      // colour by absolute position, not ring index, so the outermost band
+      // stays the same colour from stage to stage and the field stays readable.
+      color: HEAT[HEAT.length - (k - i)],
+      startAlive: cells.filter(c => c.alive).length,
+      cells,
+    });
+  }
+  G.rings = rings;
+  G.bricksTotal = rings.reduce((s,r) => s + r.cells.filter(c => c.alive).length, 0);
+  G.bricksLeft = G.bricksTotal;
+}
+
+// ---- ring drift --------------------------------------------------------
+// No hand of god moving bricks. A ring that has been hollowed out drifts
+// outward into the space it vacated and loses angular momentum, so the tail
+// end gets shorter and more trackable without anything teleporting.
+function updateDrift(dt){
+  let ceiling = PADDLE_R - PADDLE_T - 0.055;
+  for(let i = G.rings.length - 1; i >= 0; i--){
+    const rg = G.rings[i];
+    let alive = 0;
+    for(const c of rg.cells) if(c.alive) alive++;
+    const depleted = clamp(1 - (rg.startAlive ? alive/rg.startAlive : 0), 0, 1);
+    const target = Math.max(0, ceiling - rg.baseOuter) * Math.pow(depleted, 1.6);
+    rg.drift += (target - rg.drift) * Math.min(1, dt*0.9);
+    rg.inner = rg.baseInner + rg.drift;
+    rg.outer = rg.baseOuter + rg.drift;
+    rg.spinScale = lerp(1, 0.3, depleted);
+    if(alive > 0) ceiling = rg.inner - 0.03;
+  }
+}
+
+function resetBall(){
+  const r = PADDLE_R - PADDLE_T - BALL_R - 0.008;
+  G.ball.x = Math.cos(G.paddle)*r;
+  G.ball.y = Math.sin(G.paddle)*r;
+  G.ball.vx = G.ball.vy = 0;
+  G.trail.length = 0;
+  G.aiming = false;
+  G.mode = "ready";
+}
+
+function launch(){
+  const a = G.paddle + Math.PI + (Math.random()-0.5)*0.28;
+  const sp = speedRange()[0];
+  G.ball.vx = Math.cos(a)*sp;
+  G.ball.vy = Math.sin(a)*sp;
+  G.mode = "play";
+  G.combo = 0;
+  blip(520, 0.06, "triangle", 0.06);
+}
+
+function startRun(){
+  G.score = 0; G.level = 1; G.lives = 3;
+  makeLevel(1); resetBall(); hideOverlay(); syncHud();
+}
+
+// ---------------------------------------------------------------- fx
+function burst(x, y, color, n=10, power=0.5){
+  for(let i=0;i<n;i++){
+    const a = Math.random()*TAU, s = (0.2 + Math.random()*power);
+    G.parts.push({x, y, vx:Math.cos(a)*s, vy:Math.sin(a)*s, life:1, color,
+                  size: 0.004 + Math.random()*0.008});
+  }
+}
+function wave(r, color){ G.waves.push({r, life:1, color}); }
+function shake(v){ if(!REDUCED) G.shake = Math.min(G.shake + v, 0.05); }
+
+// ---------------------------------------------------------------- collision
+// Closest point on an annular sector to p, then push out along the normal.
+function sectorHit(px, py, inner, outer, a0, span, rad){
+  const r = Math.hypot(px, py);
+  const th = Math.atan2(py, px);
+  const rc = clamp(r, inner, outer);
+  const d = angDiff(th, a0);
+  const tc = d < 0 ? a0 : d > span ? a0 + span : th;
+  const qx = Math.cos(tc)*rc, qy = Math.sin(tc)*rc;
+  let nx = px - qx, ny = py - qy;
+  let dist = Math.hypot(nx, ny);
+  if(dist > rad) return null;
+  if(dist < 1e-6){                        // centre buried: fall back to radial
+    const s = r < (inner+outer)/2 ? -1 : 1;
+    nx = Math.cos(th)*s; ny = Math.sin(th)*s; dist = 0;
+  } else { nx /= dist; ny /= dist; }
+  return {nx, ny, push: rad - dist, hx: qx, hy: qy};
+}
+
+function reflect(b, n){
+  const dot = b.vx*n.nx + b.vy*n.ny;
+  if(dot < 0){ b.vx -= 2*dot*n.nx; b.vy -= 2*dot*n.ny; }
+  b.x += n.nx * (n.push + 0.0008);
+  b.y += n.ny * (n.push + 0.0008);
+}
+
+function breakCell(ring, idx, ci){
+  const cell = ring.cells[idx];
+  cell.hp--;
+  cell.flash = 1;
+  if(cell.hp > 0){ crunch(0.06, 0.07, 700); blip(180, 0.05, "sawtooth", 0.045); return; }
+  cell.alive = false;
+  G.bricksLeft = Math.max(0, G.bricksLeft - 1);
+  G.combo++;
+  G.score += 10 * Math.min(G.combo, 8);
+  const segA = TAU / ring.segs;
+  const mid = ring.rot + (idx + 0.5)*segA;
+  const mr = (ring.inner + ring.outer)/2;
+  burst(Math.cos(mid)*mr, Math.sin(mid)*mr, ring.color, 9, 0.5);
+  crunch(0.06, 0.08, 800 + Math.min(G.combo,12)*90);
+  blip(220 + Math.min(G.combo,12)*38, 0.055, "square", 0.05);
+  shake(0.006);
+  G.freeze = REDUCED ? 0 : 0.022;
+  if(ring.cells.every(c => !c.alive)){
+    G.score += 250;
+    wave(ring.outer, ring.color);
+    G.coreGlow = 1;
+    crunch(0.09, 0.3, 600);
+    sweep(300, 900, 0.35, 0.08);
+    shake(0.018);
+  }
+  const destroyed = G.bricksTotal - G.bricksLeft;
+  if(G.bricksLeft === 0 || destroyed >= G.bricksTotal * (cfg.clearPct/100)) levelClear();
+}
+
+function sweepRemnants(){
+  let n = 0;
+  for(const rg of G.rings){
+    const segA = TAU/rg.segs;
+    for(let i=0;i<rg.segs;i++){
+      const c = rg.cells[i];
+      if(!c.alive) continue;
+      c.alive = false; n++;
+      const mid = rg.rot + (i+0.5)*segA, mr = (rg.inner + rg.outer)/2;
+      burst(Math.cos(mid)*mr, Math.sin(mid)*mr, rg.color, 7, 0.6);
+    }
+  }
+  G.bricksLeft = 0;
+  if(n) G.score += n * 15;
+  return n;
+}
+
+function levelClear(){
+  G.mode = "clear";
+  G.score += 500;
+  const swept = sweepRemnants();
+  if(swept){ shake(0.02); crunch(0.1, 0.35, 900); }
+  sweep(400, 1400, 0.6, 0.09);
+  const n = G.level, m = n + 1;
+  const deltas = [];
+  if(ringCount(m) > ringCount(n)) deltas.push(ringCount(m) + " rings");
+  const a0 = Math.max(ARC_FLOOR, cfg.arcDeg - ARC_STEP*(n-1));
+  const a1 = Math.max(ARC_FLOOR, cfg.arcDeg - ARC_STEP*(m-1));
+  if(a1 < a0) deltas.push("smaller paddle");
+  if(spinRamp(m) > spinRamp(n)) deltas.push("faster spin");
+  if(m === 4) deltas.push("tougher inner ring");
+  showOverlay("LEVEL " + n + " COMPLETE",
+              "+500 bonus" + (swept ? " · " + swept + " cleared (+" + swept*15 + ")" : "") +
+              (deltas.length ? " · next: " + deltas.join(", ") : ""),
+              "click to continue");
+}
+
+function loseLife(){
+  G.lives--;
+  G.combo = 0;
+  shake(0.03);
+  sweep(300, 60, 0.5, 0.1);
+  burst(G.ball.x, G.ball.y, "#F2E4CF", 16, 0.7);
+  if(G.lives <= 0){
+    G.mode = "over";
+    showOverlay("GAME OVER", "score " + G.score + " · level " + G.level, "click to play again");
+  } else {
+    resetBall();
+  }
+  syncHud();
+}
+
+// ---------------------------------------------------------------- step
+function step(dt){
+  G.t += dt;
+  for(const r of G.rings) r.rot = norm(r.rot + r.spin * cfg.spinMul * r.spinScale * dt);
+  updateDrift(dt);
+  for(const r of G.rings) for(const c of r.cells) c.flash = Math.max(0, c.flash - dt*5);
+
+  // paddle
+  const prev = G.paddle;
+  if(keys.left || keys.right){
+    G.paddle = norm(G.paddle + (keys.right ? 1 : -1) * 3.6 * dt);
+    G.paddleTarget = G.paddle;
+  } else {
+    G.paddle = norm(G.paddle + angDiff(G.paddleTarget, G.paddle) * Math.min(1, dt*26));
+  }
+  G.paddleVel = angDiff(G.paddle, prev) / Math.max(dt, 1e-4);
+
+  G.shake = Math.max(0, G.shake - dt*0.13);
+  G.coreGlow = Math.max(0, G.coreGlow - dt*1.5);
+
+  for(let i=G.parts.length-1;i>=0;i--){
+    const p = G.parts[i];
+    p.x += p.vx*dt; p.y += p.vy*dt;
+    p.vx *= 0.94; p.vy *= 0.94;
+    p.life -= dt*1.5;
+    if(p.life <= 0) G.parts.splice(i,1);
+  }
+  for(let i=G.waves.length-1;i>=0;i--){
+    const w = G.waves[i];
+    w.r += dt*1.4; w.life -= dt*1.6;
+    if(w.life <= 0) G.waves.splice(i,1);
+  }
+
+  if(G.mode === "ready"){ resetBallToPaddle(); return; }
+  if(G.mode !== "play") return;
+
+  const b = G.ball;
+
+  // gravity curves the path without changing speed
+  if(cfg.gravity !== 0){
+    const r = Math.hypot(b.x,b.y) || 1e-4;
+    const sp = Math.hypot(b.vx,b.vy) || 1e-4;
+    b.vx += (-b.x/r) * cfg.gravity * dt;
+    b.vy += (-b.y/r) * cfg.gravity * dt;
+    const ns = Math.hypot(b.vx,b.vy) || 1e-4;
+    b.vx = b.vx/ns*sp; b.vy = b.vy/ns*sp;
+  }
+
+  // tempo ramp: ease toward the stage's current target speed
+  {
+    const sp = Math.hypot(b.vx, b.vy);
+    if(sp > 1e-5){
+      const want = targetSpeed();
+      const ns = sp + (want - sp) * Math.min(1, dt*1.8);
+      b.vx = b.vx/sp*ns; b.vy = b.vy/sp*ns;
+    }
+  }
+
+  const speed = Math.hypot(b.vx, b.vy);
+  const steps = clamp(Math.ceil(speed*dt / (BALL_R*0.45)), 1, 10);
+  const sdt = dt/steps;
+
+  for(let s=0; s<steps; s++){
+    b.x += b.vx*sdt; b.y += b.vy*sdt;
+    G.trail.push(b.x, b.y);
+    if(G.trail.length > 44) G.trail.splice(0, G.trail.length - 44);
+
+    const r = Math.hypot(b.x, b.y);
+    const th = Math.atan2(b.y, b.x);
+
+    // core
+    if(r < CORE_R + BALL_R){
+      const nx = Math.cos(th), ny = Math.sin(th);
+      reflect(b, {nx, ny, push: CORE_R + BALL_R - r});
+      G.coreGlow = Math.max(G.coreGlow, 0.7);
+      burst(b.x, b.y, "#FF9E3D", 5, 0.35);
+      crunch(0.09, 0.16, 420);
+      blip(110, 0.11, "sawtooth", 0.05);
+      shake(0.008);
+      continue;
+    }
+
+    // bricks
+    for(const ring of G.rings){
+      if(r + BALL_R < ring.inner || r - BALL_R > ring.outer) continue;
+      const segA = TAU / ring.segs;
+      const pad = BALL_R / Math.max(r, 0.08);
+      const seen = new Set();
+      for(const off of [-pad, 0, pad]){
+        const idx = Math.floor(norm(th - ring.rot + off) / segA) % ring.segs;
+        if(seen.has(idx)) continue;
+        seen.add(idx);
+        const cell = ring.cells[idx];
+        if(!cell || !cell.alive) continue;
+        const hit = sectorHit(b.x, b.y, ring.inner, ring.outer,
+                              ring.rot + idx*segA, segA, BALL_R);
+        if(hit){ reflect(b, hit); breakCell(ring, idx); break; }
+      }
+    }
+
+    // paddle
+    if(r + BALL_R > PADDLE_R - PADDLE_T){
+      const halfA = halfArc();
+      const hit = sectorHit(b.x, b.y, PADDLE_R - PADDLE_T, PADDLE_R,
+                            G.paddle - halfA, halfA*2, BALL_R);
+      const outward = (b.vx*Math.cos(th) + b.vy*Math.sin(th)) > 0;
+      if(hit && outward){
+        const off = clamp(angDiff(th, G.paddle) / halfA, -1, 1);
+        const sp = Math.max(Math.hypot(b.vx,b.vy), targetSpeed());
+        const dir = th + Math.PI + off*cfg.steer + clamp(G.paddleVel*0.06, -0.3, 0.3);
+        b.vx = Math.cos(dir)*sp; b.vy = Math.sin(dir)*sp;
+        b.x += hit.nx*(hit.push + 0.001); b.y += hit.ny*(hit.push + 0.001);
+        G.combo = 0;
+        blip(180 + Math.abs(off)*120, 0.05, "triangle", 0.07);
+      }
+    }
+
+    // out
+    if(r > 1 + BALL_R*2){ loseLife(); return; }
+  }
+}
+
+function resetBallToPaddle(){
+  const r = PADDLE_R - PADDLE_T - BALL_R - 0.008;
+  G.ball.x = Math.cos(G.paddle)*r;
+  G.ball.y = Math.sin(G.paddle)*r;
+}
+
+// ---------------------------------------------------------------- draw
+function ring(r, w, color, alpha=1){
+  ctx.beginPath(); ctx.arc(0,0,r*S,0,TAU);
+  ctx.lineWidth = w; ctx.strokeStyle = color; ctx.globalAlpha = alpha;
+  ctx.stroke(); ctx.globalAlpha = 1;
+}
+
+function sector(inner, outer, a0, a1, fill, alpha=1){
+  ctx.beginPath();
+  ctx.arc(0,0,outer*S,a0,a1);
+  ctx.arc(0,0,inner*S,a1,a0,true);
+  ctx.closePath();
+  ctx.globalAlpha = alpha; ctx.fillStyle = fill; ctx.fill(); ctx.globalAlpha = 1;
+}
+
+function draw(){
+  ctx.setTransform(1,0,0,1,0,0);
+  const dpr = Math.min(devicePixelRatio||1,2);
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.fillStyle = "#120A18";
+  ctx.fillRect(0,0,W,H);
+
+  const sx = G.shake ? (Math.random()-0.5)*G.shake*S*2 : 0;
+  const sy = G.shake ? (Math.random()-0.5)*G.shake*S*2 : 0;
+  ctx.save();
+  ctx.translate(CX + sx, CY + sy);
+
+  // vignette field
+  const bg = ctx.createRadialGradient(0,0,0,0,0,S*1.05);
+  bg.addColorStop(0, "rgba(60,26,40,.55)");
+  bg.addColorStop(0.6, "rgba(29,15,36,.35)");
+  bg.addColorStop(1, "rgba(18,10,24,0)");
+  ctx.fillStyle = bg;
+  ctx.beginPath(); ctx.arc(0,0,S*1.05,0,TAU); ctx.fill();
+
+  // rim + ticks — brightness tracks the stage tempo ramp
+  const [sA, sB] = speedRange();
+  const tempo = clamp((Math.hypot(G.ball.vx,G.ball.vy) - sA) / Math.max(sB - sA, 1e-4), 0, 1);
+  ring(1, 1, "rgba(242,228,207,.16)");
+  ctx.strokeStyle = "rgba(255,158,61," + (0.10 + tempo*0.4).toFixed(3) + ")";
+  ctx.lineWidth = 1;
+  for(let i=0;i<72;i++){
+    const a = i/72*TAU, long = i%6===0;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*S, Math.sin(a)*S);
+    ctx.lineTo(Math.cos(a)*S*(long?0.965:0.98), Math.sin(a)*S*(long?0.965:0.98));
+    ctx.stroke();
+  }
+
+  // shockwaves
+  for(const w of G.waves){
+    ring(w.r, 2, w.color, w.life*0.6);
+  }
+
+  // core
+  const pulse = 1 + Math.sin(G.t*2.2)*0.02 + G.coreGlow*0.14;
+  const cg = ctx.createRadialGradient(0,0,0,0,0,CORE_R*S*2.6*pulse);
+  cg.addColorStop(0, "rgba(255,214,140,.95)");
+  cg.addColorStop(0.32, "rgba(255,110,60,.55)");
+  cg.addColorStop(1, "rgba(255,80,40,0)");
+  ctx.fillStyle = cg;
+  ctx.beginPath(); ctx.arc(0,0,CORE_R*S*2.6*pulse,0,TAU); ctx.fill();
+  ctx.fillStyle = "#FFC978";
+  ctx.beginPath(); ctx.arc(0,0,CORE_R*S*pulse,0,TAU); ctx.fill();
+  ctx.strokeStyle = "rgba(255,158,61,.9)"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(0,0,CORE_R*S*pulse,0,TAU); ctx.stroke();
+
+  // bricks
+  for(const rg of G.rings){
+    const segA = TAU/rg.segs;
+    const padA = Math.min(segA*0.10, 0.05);
+    for(let i=0;i<rg.segs;i++){
+      const c = rg.cells[i];
+      if(!c.alive) continue;
+      const a0 = rg.rot + i*segA + padA/2, a1 = rg.rot + (i+1)*segA - padA/2;
+      sector(rg.inner, rg.outer, a0, a1, rg.color,
+             (c.hp > 1 ? 0.55 : 0.92) - (rg.drift > 0.004 ? 0.10 : 0));
+      if(c.hp > 1){
+        sector(rg.inner, rg.outer, a0, a1, "#F2E4CF", 0.10);
+        ctx.strokeStyle = rg.color; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0,0,rg.outer*S,a0,a1); ctx.stroke();
+      }
+      if(c.flash > 0) sector(rg.inner, rg.outer, a0, a1, "#FFFFFF", c.flash*0.8);
+    }
+  }
+
+  // trail
+  if(G.trail.length > 4){
+    ctx.lineCap = "round";
+    for(let i=2;i<G.trail.length;i+=2){
+      const t = i/G.trail.length;
+      ctx.beginPath();
+      ctx.moveTo(G.trail[i-2]*S, G.trail[i-1]*S);
+      ctx.lineTo(G.trail[i]*S, G.trail[i+1]*S);
+      ctx.strokeStyle = "rgba(255,158,61," + (t*0.5).toFixed(3) + ")";
+      ctx.lineWidth = t * BALL_R*S*1.6;
+      ctx.stroke();
+    }
+  }
+
+  // particles
+  for(const p of G.parts){
+    ctx.globalAlpha = Math.max(0, p.life);
+    ctx.fillStyle = p.color;
+    const s = p.size*S;
+    ctx.fillRect(p.x*S - s/2, p.y*S - s/2, s, s);
+  }
+  ctx.globalAlpha = 1;
+
+  // paddle
+  const halfA = halfArc();
+  sector(PADDLE_R-PADDLE_T, PADDLE_R, G.paddle-halfA, G.paddle+halfA, "#F2E4CF", 0.92);
+  sector(PADDLE_R-PADDLE_T, PADDLE_R-PADDLE_T*0.62, G.paddle-halfA, G.paddle+halfA, "#FF9E3D", 0.9);
+
+  // ball
+  if(G.mode !== "over"){
+    ctx.shadowColor = "#FF9E3D"; ctx.shadowBlur = 16;
+    ctx.fillStyle = "#FFF3E0";
+    ctx.beginPath(); ctx.arc(G.ball.x*S, G.ball.y*S, BALL_R*S, 0, TAU); ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // aim line while held
+  if(G.mode === "ready"){
+    ctx.strokeStyle = G.aiming ? "rgba(255,158,61,.7)" : "rgba(242,228,207,.28)";
+    ctx.setLineDash([4,7]); ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(G.ball.x*S, G.ball.y*S);
+    ctx.lineTo(Math.cos(G.paddle+Math.PI)*CORE_R*S*1.5, Math.sin(G.paddle+Math.PI)*CORE_R*S*1.5);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- loop
+let last = performance.now();
+function frame(now){
+  let dt = Math.min((now - last)/1000, 1/30);
+  last = now;
+  if(G.freeze > 0){ G.freeze -= dt; dt = 0; }
+  if(G.mode === "play" || G.mode === "ready") step(dt);
+  else stepIdle(dt);
+  draw();
+  syncHud();
+  requestAnimationFrame(frame);
+}
+function stepIdle(dt){
+  // keep ambience alive on menus
+  G.t += dt;
+  G.shake = Math.max(0, G.shake - dt*0.13);
+  G.coreGlow = Math.max(0, G.coreGlow - dt*1.5);
+  for(const r of G.rings) r.rot = norm(r.rot + r.spin*cfg.spinMul*r.spinScale*dt*0.35);
+  updateDrift(dt);
+
+  for(let i=G.parts.length-1;i>=0;i--){
+    const p = G.parts[i];
+    p.x += p.vx*dt; p.y += p.vy*dt; p.vx *= 0.94; p.vy *= 0.94;
+    p.life -= dt*1.5; if(p.life<=0) G.parts.splice(i,1);
+  }
+  for(let i=G.waves.length-1;i>=0;i--){
+    const w = G.waves[i]; w.r += dt*1.4; w.life -= dt*1.6;
+    if(w.life<=0) G.waves.splice(i,1);
+  }
+}
+requestAnimationFrame(frame);
+
+// ---------------------------------------------------------------- hud
+const elScore = document.getElementById("score");
+const elLevel = document.getElementById("level");
+const elLives = document.getElementById("lives");
+const elCombo = document.getElementById("combo");
+let hudCache = "";
+function syncHud(){
+  const key = G.score + "|" + G.level + "|" + G.lives + "|" + G.combo;
+  if(key === hudCache) return;
+  hudCache = key;
+  elScore.textContent = G.score;
+  elLevel.textContent = G.level;
+  elLives.innerHTML = "";
+  for(let i=0;i<3;i++){
+    const d = document.createElement("div");
+    d.className = "life" + (i < G.lives ? "" : " off");
+    elLives.appendChild(d);
+  }
+  elCombo.textContent = G.combo > 1 ? "combo ×" + Math.min(G.combo,8) : "";
+}
+
+const overlay = document.getElementById("overlay");
+function showOverlay(title, sub, prompt, keys){
+  document.getElementById("oTitle").textContent = title;
+  document.getElementById("oSub").textContent = sub;
+  document.getElementById("oPrompt").textContent = prompt;
+  document.getElementById("oKeys").style.display = keys === false ? "none" : "block";
+  overlay.classList.add("on");
+}
+function hideOverlay(){ overlay.classList.remove("on"); }
+
+// ---------------------------------------------------------------- input
+const keys = {left:false, right:false};
+function pointerAngle(e){
+  const x = (e.clientX ?? 0) - CX, y = (e.clientY ?? 0) - CY;
+  if(Math.hypot(x,y) < 6) return null;
+  return Math.atan2(y,x);
+}
+addEventListener("pointermove", e => {
+  const a = pointerAngle(e);
+  if(a !== null) G.paddleTarget = a;
+}, {passive:true});
+
+function advance(){
+  if(G.mode === "menu" || G.mode === "over"){ startRun(); return; }
+  if(G.mode === "clear"){ G.level++; makeLevel(G.level); resetBall(); hideOverlay(); return; }
+  if(G.mode === "pause"){ G.mode = "play"; hideOverlay(); return; }
+  if(G.mode === "ready"){ launch(); }
+}
+addEventListener("pointerdown", e => {
+  if(e.target.closest(".tune")) return;
+  const a = pointerAngle(e);
+  if(a !== null) G.paddleTarget = a;
+  audio();
+  // While the ball is docked, a press only aims — release fires. Otherwise a
+  // tap on the far side of the ring would whip the paddle across and launch
+  // in the same event, before you could see where you were pointing.
+  if(G.mode !== "ready") advance();
+  else G.aiming = true;
+});
+addEventListener("pointerup", e => {
+  if(e.target.closest(".tune")) return;
+  if(G.mode === "ready" && G.aiming){ G.aiming = false; launch(); }
+});
+addEventListener("pointercancel", () => { G.aiming = false; });
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if(k === "arrowleft" || k === "a") keys.left = true;
+  if(k === "arrowright" || k === "d") keys.right = true;
+  if(k === " "){ e.preventDefault(); audio(); advance(); }
+  if(k === "p"){
+    if(G.mode === "play"){ G.mode = "pause"; showOverlay("PAUSED", "level " + G.level, "press P to resume", false); }
+    else if(G.mode === "pause"){ G.mode = "play"; hideOverlay(); }
+  }
+  if(k === "m"){ muted = !muted; }
+  if(k === "r"){ startRun(); }
+});
+addEventListener("keyup", e => {
+  const k = e.key.toLowerCase();
+  if(k === "arrowleft" || k === "a") keys.left = false;
+  if(k === "arrowright" || k === "d") keys.right = false;
+});
+addEventListener("blur", () => {
+  if(G.mode === "play"){ G.mode = "pause"; showOverlay("PAUSED", "level " + G.level, "click to resume", false); }
+});
+
+// ---------------------------------------------------------------- tuning
+const tuneBtn = document.getElementById("tuneBtn");
+const panel = document.getElementById("panel");
+tuneBtn.addEventListener("click", () => {
+  const on = panel.classList.toggle("on");
+  tuneBtn.setAttribute("aria-expanded", on);
+});
+const sliders = [
+  ["sBallSpeed","vBallSpeed","ballSpeed",
+    () => speedRange()[0].toFixed(2) + "→" + speedRange()[1].toFixed(2)],
+  ["sSpin","vSpin","spinMul", () => (cfg.spinMul*spinRamp(G.level)).toFixed(2) + "×"],
+  ["sArc","vArc","arcDeg", () => halfArcDeg() + "°"],
+  ["sSteer","vSteer","steer", () => cfg.steer.toFixed(2)],
+  ["sGrav","vGrav","gravity", () => cfg.gravity.toFixed(2)],
+  ["sClear","vClear","clearPct", () => Math.round(cfg.clearPct) + "%"],
+];
+for(const [sid, vid, key, fmt] of sliders){
+  const s = document.getElementById(sid), v = document.getElementById(vid);
+  s.value = cfg[key];
+  v.textContent = fmt();
+  s.addEventListener("input", () => {
+    cfg[key] = parseFloat(s.value);
+    v.textContent = fmt();
+  });
+  s.dataset.vid = vid;
+}
+// keep readouts honest as the stage curve moves them
+setInterval(() => {
+  for(const [sid, vid, , fmt] of sliders){
+    const v = document.getElementById(vid);
+    if(document.activeElement !== document.getElementById(sid)) v.textContent = fmt();
+  }
+}, 400);
+
+// ---------------------------------------------------------------- boot
+makeLevel(1);
+resetBall();
+G.mode = "menu";
+showOverlay("RINGBREAKER", "a 360° brick breaker", "click to start");
+syncHud();
+})();
+</script>
+</body>
+</html>
