@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>SLOPCADE</title>
+<style>
+  :root{
+    --void:#120A18;
+    --void2:#1D0F24;
+    --bone:#F2E4CF;
+    --ember:#FF9E3D;
+    --coral:#FF6B4A;
+    --dim:rgba(242,228,207,.42);
+    --line:rgba(242,228,207,.16);
+  }
+  *{box-sizing:border-box}
+  html,body{min-height:100%;margin:0;background:var(--void);color:var(--bone);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;-webkit-tap-highlight-color:transparent}
+  body{background:radial-gradient(circle at 50% 12%,var(--void2),var(--void) 68%);
+    display:flex;flex-direction:column;align-items:center;padding:9vh 22px 64px}
+
+  header{text-align:center;margin-bottom:46px}
+  h1{font-size:clamp(34px,9vw,74px);letter-spacing:.16em;margin:0 0 8px;font-weight:600}
+  .tag{font-size:11px;letter-spacing:.32em;text-transform:uppercase;color:var(--ember)}
+
+  .grid{display:grid;gap:22px;width:100%;max-width:900px;
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+
+  a.card{--accent:var(--ember);
+    position:relative;display:flex;flex-direction:column;text-decoration:none;color:var(--bone);
+    background:rgba(242,228,207,.04);border:1px solid var(--line);border-radius:14px;overflow:hidden;
+    transition:border-color .18s,transform .18s,box-shadow .18s}
+  a.card:hover,a.card:focus-visible{border-color:var(--accent);transform:translateY(-3px);
+    box-shadow:0 12px 40px -18px var(--accent);outline:none}
+
+  /* the live game screen */
+  .screen{position:relative;aspect-ratio:16/10;overflow:hidden;background:var(--void2);
+    border-bottom:1px solid var(--line)}
+  .screen iframe{position:absolute;inset:0;width:100%;height:100%;border:0;display:block;
+    pointer-events:none;opacity:0;transition:opacity .5s ease}
+  .screen.ready iframe{opacity:1}
+
+  /* poster shown before the game boots (and for reduced-motion) */
+  .poster{position:absolute;inset:0;display:grid;place-items:center;
+    background:radial-gradient(circle at 50% 40%,color-mix(in srgb,var(--accent) 22%,var(--void2)),var(--void) 78%);
+    transition:opacity .5s ease}
+  .screen.ready .poster{opacity:0}
+  .poster::after{content:"";position:absolute;inset:0;
+    background:linear-gradient(105deg,transparent 35%,rgba(242,228,207,.10) 50%,transparent 65%);
+    background-size:220% 100%;animation:sweep 2.2s linear infinite}
+  .screen.ready .poster::after{animation:none}
+  @keyframes sweep{from{background-position:180% 0}to{background-position:-80% 0}}
+  .poster .glyph{font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--dim)}
+
+  /* play affordance floating over the screen */
+  .play{position:absolute;left:12px;bottom:12px;z-index:2;
+    font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--void);
+    background:var(--accent);padding:6px 12px;border-radius:999px;font-weight:600;
+    opacity:0;transform:translateY(6px);transition:opacity .18s,transform .18s}
+  a.card:hover .play,a.card:focus-visible .play{opacity:1;transform:none}
+
+  .meta{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:16px 18px}
+  .name{font-size:18px;letter-spacing:.1em;text-transform:uppercase}
+  .desc{display:block;font-size:11px;letter-spacing:.06em;color:var(--dim);
+    text-transform:uppercase;margin-top:6px}
+  .go{font-size:12px;letter-spacing:.2em;color:var(--accent);flex:none;align-self:center}
+
+  footer{margin-top:56px;font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+  :focus-visible{outline:2px solid var(--ember);outline-offset:3px}
+
+  @media (prefers-reduced-motion:reduce){
+    .poster::after{animation:none}
+    a.card{transition:none}
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1>SLOPCADE</h1>
+    <div class="tag">an arcade of vibe-coded prototypes</div>
+  </header>
+
+  <nav class="grid" id="grid" aria-label="Games"></nav>
+
+  <footer>gregt.xyz</footer>
+
+<script>
+  // Add a game here and it shows up with a live preview.
+  // Pure-canvas games fill the frame directly. Games with a fixed-size UI menu
+  // (like Polyrhythm's title screen) set `fit` to a base device resolution — the
+  // preview renders at that size and is scaled down to fit, so the whole screen
+  // stays proportional instead of showing a cropped slice. `aspect` shapes the card.
+  const GAMES = [
+    { slug:"ringbreaker", name:"Ringbreaker", desc:"360° brick breaker",         accent:"#FF6B4A" },
+    { slug:"polyrhythm",  name:"Polyrhythm",  desc:"rhythm toy · sound required", accent:"#B07BFF", fit:{ w:460, h:900 } },
+    { slug:"sail",        name:"Sail",        desc:"asset-free ocean · webgl2 · jank as hell",   accent:"#3FD0C9" },
+  ];
+
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const grid = document.getElementById("grid");
+
+  // Resolve an absolute base for this page so links/previews work whether the URL
+  // has a trailing slash (/slopcade/), lacks one (/slopcade), or ends in index.html.
+  const base = location.pathname.replace(/\/index\.html?$/i, "/").replace(/\/?$/, "/");
+
+  for (const g of GAMES){
+    const card = document.createElement("a");
+    card.className = "card";
+    card.href = base + g.slug + "/";
+    card.style.setProperty("--accent", g.accent);
+    // explicit index.html so the preview resolves under file:// and plain static
+    // servers that don't auto-serve a directory index
+    card.dataset.src = base + g.slug + "/index.html";
+    if (g.fit) card.dataset.fit = g.fit.w + "x" + g.fit.h;
+    card.innerHTML = `
+      <div class="screen" style="aspect-ratio:${g.aspect || "16/10"}">
+        <div class="poster"><span class="glyph">${g.name}</span></div>
+        <span class="play">▶ Play</span>
+      </div>
+      <div class="meta">
+        <span><span class="name">${g.name}</span><span class="desc">${g.desc}</span></span>
+        <span class="go">PLAY ›</span>
+      </div>`;
+    grid.appendChild(card);
+  }
+
+  // Lazy-mount live previews only while near the viewport; unmount when well past
+  // so we never keep more than a couple of WebGL/audio contexts alive on mobile.
+  if (!reduceMotion && "IntersectionObserver" in window){
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries){
+        const card = e.target;
+        const screen = card.querySelector(".screen");
+        if (e.isIntersecting){
+          if (screen.querySelector("iframe")) continue;
+          const frame = document.createElement("iframe");
+          frame.setAttribute("tabindex","-1");
+          frame.setAttribute("aria-hidden","true");
+          frame.setAttribute("scrolling","no");
+          frame.title = card.querySelector(".name").textContent + " preview";
+          frame.addEventListener("load", () => screen.classList.add("ready"));
+
+          // Fixed-resolution games (tall UI menus): render at their device size and
+          // scale to fill the card width, anchored to the top — shows the recognizable
+          // top of the screen (logo, etc.) instead of a cropped middle slice, while the
+          // card stays the same uniform size as every other.
+          if (card.dataset.fit){
+            const [fw, fh] = card.dataset.fit.split("x").map(Number);
+            Object.assign(frame.style, {
+              width: fw + "px", height: fh + "px",
+              position: "absolute", left: "50%", top: "0",
+              right: "auto", bottom: "auto", transformOrigin: "top center"
+            });
+            const fit = () => {
+              frame.style.transform = `translateX(-50%) scale(${screen.clientWidth / fw})`;
+            };
+            const ro = new ResizeObserver(fit);
+            ro.observe(screen);
+            frame._ro = ro;
+            fit();
+          }
+
+          frame.src = card.dataset.src;
+          screen.appendChild(frame);
+        } else {
+          const frame = screen.querySelector("iframe");
+          if (frame){ if (frame._ro) frame._ro.disconnect(); frame.remove(); screen.classList.remove("ready"); }
+        }
+      }
+    }, { rootMargin: "400px 0px" });
+
+    document.querySelectorAll(".card").forEach(c => io.observe(c));
+  }
+</script>
+</body>
+</html>
