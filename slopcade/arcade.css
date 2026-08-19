@@ -1,0 +1,641 @@
+/* ==========================================================================
+   SLOPCADE — a room of CSS-3D arcade cabinets.
+
+   All 3D maths lives here. The HTML carries structure and a handful of
+   unitless numbers (--x, --y, --yaw, --hue); every position, rotation and
+   shade below is derived from those. Nothing needs a build step.
+
+   Coordinates: x right, y depth (more negative = further away), z up.
+   1 unit = 1cm, and eye height is 170, so the numbers read as real sizes.
+   ========================================================================== */
+
+@import url("/css/site.css");
+
+/* --------------------------------------------------------------------------
+   Camera
+
+   --p-x/--p-y/--p-z and --yaw/--pitch are the camera. The transform is also
+   written out literally per view further down: transitioning the matrix
+   interpolates once, where transitioning the properties makes the engine
+   re-resolve every var() that depends on them across the whole tree, every
+   frame. Billboards still read --yaw, hence both.
+   -------------------------------------------------------------------------- */
+html, body {
+    overscroll-behavior: none;
+    margin: 0;
+    overflow: hidden;
+    background: #000;
+}
+
+.viewport {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    user-select: none;
+    background: #050505;
+    perspective: 700px;
+}
+
+.world {
+    --fov: 700px;
+    --p-x: 0; --p-y: 0; --p-z: 0;
+    --yaw: 0; --pitch: 0;
+
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transform-origin: 50% 50%;
+
+    /* No will-change. Promoting this to its own layer loses hit-testing on
+       the 3D content inside it. */
+    transition: transform 720ms cubic-bezier(.34, 0, .2, 1);
+    transform:
+        translateZ(var(--fov))
+        rotateX(calc(var(--pitch) * 1deg))
+        rotateY(calc(var(--yaw) * 1deg))
+        translate3d(calc(var(--p-x) * -1px), calc(var(--p-z) * 1px), calc(var(--p-y) * -1px));
+}
+
+/* --------------------------------------------------------------------------
+   Frames and faces
+   -------------------------------------------------------------------------- */
+
+/* A zero-size anchor that re-origins local coordinates. 50% of a zero-size
+   parent is 0, so faces use the same centring rule whether they sit in the
+   world or inside a nested frame — that is what makes composites nest. */
+.grp {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 0; height: 0;
+    transform-style: preserve-3d;
+
+    --x: 0;
+    --y: 0;
+    --z: 0;
+    --rot: 0;
+    --tilt: 0;
+    transform:
+        translate3d(calc(var(--x, 0) * 1px), calc(var(--z, 0) * -1px), calc(var(--y, 0) * 1px))
+        rotateY(calc(var(--rot) * 1deg))
+        rotateX(calc(var(--tilt) * 1deg));
+}
+
+/* The one real primitive. Everything visible is one of these.
+   --k scales the face about its centre afterwards, so a face can be laid out
+   oversized for crisp rasterising and still land at its true world size; the
+   -50% cancels the layout offset whatever that size is. */
+.f {
+    position: absolute;
+    top: 50%; left: 50%;
+    box-sizing: border-box;
+    width: calc(var(--w) * 1px);
+    height: calc(var(--h) * 1px);
+    color: inherit;
+    text-decoration: none;
+    pointer-events: auto;
+    transform:
+        translate3d(calc(-50% + var(--px, 0) * 1px), calc(-50% - var(--pz, 0) * 1px), calc(var(--py, 0) * 1px))
+        rotateY(calc(var(--ry, 0) * 1deg))
+        rotateX(calc(var(--rx, 0) * 1deg))
+        scale(var(--k, 1));
+}
+
+.round { border-radius: 50%; }
+
+/* --------------------------------------------------------------------------
+   Lighting
+
+   Three point lights, resolved ONCE per object on .lit and inherited by
+   everything inside it — a cabinet solves three lights and its forty parts
+   read the answer for free. None of it depends on the camera, so it is
+   computed at load and never again.
+
+   Distance is measured from the object's origin, not per face. Over a 70cm
+   cabinet that is invisible, but it means a room-sized plane gets one flat
+   value — floors and walls take pools instead, further down.
+   -------------------------------------------------------------------------- */
+.world {
+    --ambient: #2B2236;
+    --ambient-mix: 3%;
+
+    /* Exponent on N·L. 1 is plain Lambert, which lights grazing surfaces far
+       too generously — a lamp 71 degrees overhead still gives a vertical face
+       N·L = 0.33, and three lamps take that to 19% of bright colour laid on
+       top, which no base colour can escape. This is the contrast knob. */
+    --falloff: 3.2;
+
+    --l0-x: -122; --l0-y: -232; --l0-z: 232; --l0-c: #B07BFF; --l0-p: .42; --l0-r: 340;
+    --l1-x:    0; --l1-y: -250; --l1-z: 232; --l1-c: #FF6B4A; --l1-p: .46; --l1-r: 340;
+    --l2-x:  122; --l2-y: -232; --l2-z: 232; --l2-c: #3FD0C9; --l2-p: .42; --l2-r: 340;
+}
+
+/* Every division below is number/number. Doing this in px would need
+   length/length division in calc(), which is a much later addition — and one
+   unsupported var() invalidates the whole background it feeds. */
+.lit {
+    --l0-dx: calc(var(--l0-x) - var(--x)); --l0-dy: calc(var(--l0-y) - var(--y)); --l0-dz: calc(var(--l0-z) - var(--z, 0));
+    --l1-dx: calc(var(--l1-x) - var(--x)); --l1-dy: calc(var(--l1-y) - var(--y)); --l1-dz: calc(var(--l1-z) - var(--z, 0));
+    --l2-dx: calc(var(--l2-x) - var(--x)); --l2-dy: calc(var(--l2-y) - var(--y)); --l2-dz: calc(var(--l2-z) - var(--z, 0));
+
+    --l0-d: hypot(var(--l0-dx), var(--l0-dy), var(--l0-dz));
+    --l1-d: hypot(var(--l1-dx), var(--l1-dy), var(--l1-dz));
+    --l2-d: hypot(var(--l2-dx), var(--l2-dy), var(--l2-dz));
+
+    /* Azimuth in this object's own frame, so a face can compare it against
+       its own --ry without knowing the object turned. */
+    --l0-a: calc(atan2(var(--l0-dx), var(--l0-dy)) - var(--rot, 0) * 1deg);
+    --l1-a: calc(atan2(var(--l1-dx), var(--l1-dy)) - var(--rot, 0) * 1deg);
+    --l2-a: calc(atan2(var(--l2-dx), var(--l2-dy)) - var(--rot, 0) * 1deg);
+
+    --l0-e: asin(clamp(-1, calc(var(--l0-dz) / var(--l0-d)), 1));
+    --l1-e: asin(clamp(-1, calc(var(--l1-dz) / var(--l1-d)), 1));
+    --l2-e: asin(clamp(-1, calc(var(--l2-dz) / var(--l2-d)), 1));
+
+    /* Linear falloff. Inverse-square blows the near field out to white. */
+    --l0-i: max(0, calc(var(--l0-p) * (1 - var(--l0-d) / var(--l0-r))));
+    --l1-i: max(0, calc(var(--l1-p) * (1 - var(--l1-d) / var(--l1-r))));
+    --l2-i: max(0, calc(var(--l2-p) * (1 - var(--l2-d) / var(--l2-r))));
+}
+
+/* A face's normal is (cos rx · sin ry, cos rx · cos ry, sin rx), so N·L
+   collapses to these two terms. Ambient tints the surface down, then each
+   lamp pulls it toward its own colour — one flat colour per face, computed
+   once. The layered-and-blended version was truer additive light, but the
+   camera re-rasterises every element it passes and four layers plus a blend
+   each put the framerate on the floor for nothing the eye could see. */
+.f {
+    --n0: calc(cos(var(--rx, 0) * 1deg) * cos(var(--l0-e)) * cos(var(--ry, 0) * 1deg - var(--l0-a)) + sin(var(--rx, 0) * 1deg) * sin(var(--l0-e)));
+    --n1: calc(cos(var(--rx, 0) * 1deg) * cos(var(--l1-e)) * cos(var(--ry, 0) * 1deg - var(--l1-a)) + sin(var(--rx, 0) * 1deg) * sin(var(--l1-e)));
+    --n2: calc(cos(var(--rx, 0) * 1deg) * cos(var(--l2-e)) * cos(var(--ry, 0) * 1deg - var(--l2-a)) + sin(var(--rx, 0) * 1deg) * sin(var(--l2-e)));
+
+    /* max() first: a back face has negative N·L and pow() of a negative is
+       not a number. */
+    --s0: color-mix(in srgb, var(--face, #2A2233), var(--ambient) var(--ambient-mix));
+    --s1: color-mix(in srgb, var(--s0), var(--l0-c) calc(clamp(0, pow(max(0, var(--n0)), var(--falloff)) * var(--l0-i), 1) * 100%));
+    --s2: color-mix(in srgb, var(--s1), var(--l1-c) calc(clamp(0, pow(max(0, var(--n1)), var(--falloff)) * var(--l1-i), 1) * 100%));
+    --s3: color-mix(in srgb, var(--s2), var(--l2-c) calc(clamp(0, pow(max(0, var(--n2)), var(--falloff)) * var(--l2-i), 1) * 100%));
+
+    background-color: var(--s3);
+}
+
+/* --------------------------------------------------------------------------
+   Room
+   -------------------------------------------------------------------------- */
+.room {
+    --x: 0; --y: -290; --z: 0;
+    --rw: 800; --rd: 620; --rh: 460;
+    --far: calc(var(--y) - var(--rd) / 2);
+    --grid: rgba(150, 210, 235, .07);
+}
+
+/* Nothing here is clickable, and these are single planes the size of the
+   room — browsers sort by one depth value per element, so a plane this big
+   can win the hit test against a cabinet standing on it. */
+.floor, .wall {
+    pointer-events: none;
+    background-repeat: no-repeat;
+    background-color: var(--s0);
+}
+
+.floor {
+    --w: var(--rw); --h: var(--rd); --rx: 90; --face: #07050A;
+    background-image:
+        repeating-linear-gradient(90deg, var(--grid) 0 1px, transparent 1px 100px),
+        repeating-linear-gradient(0deg, var(--grid) 0 1px, transparent 1px 100px),
+        radial-gradient(circle calc(var(--l0-r) * .64 * 1px) at calc((var(--l0-x) + var(--rw) / 2) * 1px) calc((var(--l0-y) - var(--far)) * 1px), color-mix(in srgb, var(--l0-c), transparent calc(100% - var(--l0-p) * 22%)), transparent),
+        radial-gradient(circle calc(var(--l1-r) * .64 * 1px) at calc((var(--l1-x) + var(--rw) / 2) * 1px) calc((var(--l1-y) - var(--far)) * 1px), color-mix(in srgb, var(--l1-c), transparent calc(100% - var(--l1-p) * 22%)), transparent),
+        radial-gradient(circle calc(var(--l2-r) * .64 * 1px) at calc((var(--l2-x) + var(--rw) / 2) * 1px) calc((var(--l2-y) - var(--far)) * 1px), color-mix(in srgb, var(--l2-c), transparent calc(100% - var(--l2-p) * 22%)), transparent);
+}
+
+.wall {
+    --w: var(--rw); --h: var(--rh); --face: #050409;
+    --py: calc(var(--far) - var(--y)); --pz: calc(var(--rh) / 2);
+    background-image:
+        radial-gradient(circle calc(var(--l0-r) * .53 * 1px) at calc((var(--l0-x) + var(--rw) / 2) * 1px) calc((var(--rh) - var(--l0-z)) * 1px), color-mix(in srgb, var(--l0-c), transparent calc(100% - var(--l0-p) * 11%)), transparent),
+        radial-gradient(circle calc(var(--l1-r) * .53 * 1px) at calc((var(--l1-x) + var(--rw) / 2) * 1px) calc((var(--rh) - var(--l1-z)) * 1px), color-mix(in srgb, var(--l1-c), transparent calc(100% - var(--l1-p) * 11%)), transparent),
+        radial-gradient(circle calc(var(--l2-r) * .53 * 1px) at calc((var(--l2-x) + var(--rw) / 2) * 1px) calc((var(--rh) - var(--l2-z)) * 1px), color-mix(in srgb, var(--l2-c), transparent calc(100% - var(--l2-p) * 11%)), transparent);
+}
+
+/* --------------------------------------------------------------------------
+   Cabinet
+
+   Front elevation, floor up. Every band ends exactly where the next starts,
+   so the face is continuous and nothing overhangs the sides:
+
+     0      -> 76   kick panel, at the front face
+     76     -> 90   control box: apron out at --cp-out, underside closing it
+     90     -> 98   control surface, sloping back 12 degrees
+     98     -> 152  screen alcove, walled by the sides, hooded by the marquee
+     152    -> 180  marquee
+
+   There is no bezel panel. A real cabinet has no picture frame around the
+   screen — the alcove IS the cabinet, and the screen is simply its back wall.
+   -------------------------------------------------------------------------- */
+.cab {
+    --W: 70; --H: 180; --D: 85;
+    --hw: calc(var(--W) / 2);
+    --hd: calc(var(--D) / 2);
+
+    --cp-out: 15.5;
+    --cp-in: 22;
+    --base-h: calc(var(--H) * .4222);
+    --cpf-z: calc(var(--H) * .50);
+    --cpb-z: calc(var(--H) * .5444);
+    --cpf-y: calc(var(--hd) + var(--cp-out));
+    --cpb-y: calc(var(--hd) - var(--cp-in));
+    --cp-len: calc(var(--H) * .213);
+    --marq-h: calc(var(--H) * .156);
+    --alc-z1: calc(var(--H) - var(--marq-h));
+    --alc-d: calc(var(--hd) - var(--cpb-y));
+    --side-w: calc(var(--D) + var(--cp-out));
+
+    /* Colour lives on the edges. The body is black. */
+    --accent: var(--hue, #FF9E3D);
+    --body: #08060C;
+}
+
+.cab .panel { --face: var(--body); border: 1px solid color-mix(in srgb, var(--accent), #000 52%); }
+
+/* Sides are wider than the body depth and pushed forward, so the clip-path
+   profile has room to bulge around the control box. Two layers each: an
+   accent plane, and a black one 2% smaller just outside it — what shows
+   between is a rim following the profile. A border cannot do this, because
+   clip-path cuts it away with everything else outside the outline. */
+.cab .side { --w: var(--side-w); --h: var(--H); --py: calc(var(--cp-out) / 2); --pz: calc(var(--H) / 2); }
+.cab .side-l { --px: calc(var(--hw) * -1); --ry: -90; }
+.cab .side-r { --px: var(--hw); --ry: 90; }
+.cab .rim { --face: var(--accent); background-color: var(--accent); }
+.cab .skin, .cab .skin-i { --face: var(--body); --k: .98; }
+.cab .side-l.skin { --px: calc(var(--hw) * -1 - .4); }
+.cab .side-r.skin { --px: calc(var(--hw) + .4); }
+.cab .side-l.skin-i { --px: calc(var(--hw) * -1 + .4); }
+.cab .side-r.skin-i { --px: calc(var(--hw) - .4); }
+
+/* Points are (58 - y) / 100.5 across and (180 - z) / 180 down. Recompute by
+   hand if the cabinet is resized — clip-path takes no var(). */
+.cab .side-r { clip-path: polygon(15.42% 0%, 15.42% 48.17%, 0% 50%, 0% 57.78%, 15.42% 57.78%, 15.42% 100%, 100% 100%, 100% 0%); }
+.cab .side-l { clip-path: polygon(84.58% 0%, 84.58% 48.17%, 100% 50%, 100% 57.78%, 84.58% 57.78%, 84.58% 100%, 0% 100%, 0% 0%); }
+
+.cab .back  { --w: var(--W); --h: var(--H); --py: calc(var(--hd) * -1); --pz: calc(var(--H) / 2); }
+.cab .top   { --w: var(--W); --h: var(--D); --pz: var(--H); --rx: 90; }
+.cab .kick  { --w: var(--W); --h: var(--base-h); --py: var(--hd); --pz: calc(var(--base-h) / 2); --face: #050409; }
+.cab .apron { --w: var(--W); --h: calc(var(--cpf-z) - var(--base-h)); --py: var(--cpf-y); --pz: calc((var(--base-h) + var(--cpf-z)) / 2); }
+.cab .under { --w: var(--W); --h: var(--cp-out); --py: calc(var(--hd) + var(--cp-out) / 2); --pz: var(--base-h); --rx: -90; }
+.cab .hood  { --w: var(--W); --h: var(--alc-d); --py: calc(var(--hd) - var(--alc-d) / 2); --pz: var(--alc-z1); --rx: -90; --face: #0B0710; }
+
+/* Control surface: 38cm deep at 12 degrees, running from a lip 15.5cm proud
+   of the cabinet back to where it seals the bottom of the alcove. */
+.cab .cp {
+    --x: 0;
+    --y: calc((var(--cpf-y) + var(--cpb-y)) / 2);
+    --z: calc((var(--cpf-z) + var(--cpb-z)) / 2);
+    --tilt: -12;
+}
+.cab .cp-face { --w: var(--W); --h: var(--cp-len); --rx: 90; --face: #0B0912; border: 1px solid color-mix(in srgb, var(--accent), #000 52%); }
+
+/* Marquee: black, with emissive lettering. Vertical and flush — tilted, its
+   top edge overhung the sides and opened a wedge at each top corner.
+   Laid out 6x and scaled down, or the type rasterises to mush. */
+.cab .marquee {
+    --w: 420; --h: 168.48; --k: .16667;
+    --py: var(--hd); --pz: calc(var(--H) - var(--marq-h) / 2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 5%;
+    background: var(--body);
+    color: var(--accent);
+    font-family: var(--mono);
+    /* Height-driven until the name is too long for 70cm, then width-driven. */
+    font-size: min(calc(var(--h) * 1px * .55), calc(var(--w) * 1px * .92 / (max(var(--chars, 8), 1) * .62)));
+    font-weight: 700;
+    letter-spacing: .02em;
+    line-height: 1;
+    text-align: center;
+    text-transform: uppercase;
+    text-shadow: 0 0 12px var(--accent), 0 0 54px var(--accent);
+    border: 6px solid var(--accent);
+    box-shadow: 0 0 108px -36px var(--accent);
+}
+
+/* --------------------------------------------------------------------------
+   Screen — the alcove's back wall, 22cm behind the front face
+   -------------------------------------------------------------------------- */
+.cab .screen {
+    --w: 384; --h: 295.83; --k: .18229;
+    --py: var(--cpb-y); --pz: calc((var(--cpb-z) + var(--alc-z1)) / 2);
+    background: #08060E;
+    overflow: hidden;
+}
+
+/* The tube's inner glass. The preview is scaled to fill it exactly, so the
+   game renders at a real viewport rather than a cropped 384px one. */
+.cab .tube {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    overflow: hidden;
+    background-color: #05040A;
+    background-image:
+        var(--shot, none),
+        radial-gradient(ellipse 78% 78% at 50% 38%,
+            color-mix(in srgb, var(--accent) 30%, #0B0710) 0%, #08060E 70%, #05040A 100%);
+    background-size: cover, cover;
+    background-position: center;
+    pointer-events: none;
+}
+
+.cab .tube iframe {
+    content-visibility: hidden;
+    transition: content-visibility 1520ms allow-discrete;
+    position: absolute;
+    top: 0; left: 0;
+    border: 0;
+    transform-origin: top left;
+    width: calc(var(--pw) * 1px);
+    height: calc(var(--pw) * 1px * 295.83 / 384);
+    transform: scale(calc(384 / var(--pw)));
+}
+
+/* The machine's own menu, drawn IN the tube beneath the CRT overlay so the
+   scanlines and glare fall across it. A plane floating in front of the glass
+   reads as a page overlay no matter how it is styled. */
+.cab .ui {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: grid;
+    place-items: center;
+    opacity: 1;
+    pointer-events: none;
+    transition: opacity 180ms ease-out;
+}
+
+.cab .ui a {
+    font-family: var(--mono);
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    text-decoration: none;
+    color: var(--accent);
+    text-shadow: 0 0 calc(var(--w) * 1px * .03) var(--accent);
+}
+
+.cab .play {
+    font-size: calc(var(--w) * 1px * .095);
+    letter-spacing: .28em;
+    text-shadow: 0 0 calc(var(--w) * 1px * .012) var(--accent), 0 0 calc(var(--w) * 1px * .05) var(--accent);
+}
+
+/* Instruction plate on the apron, where a real cabinet carries one. The way
+   back does not belong printed on the game's own screen. */
+.cab .plate {
+    --w: 170; --h: 50; --k: .2;
+    --py: calc(var(--cpf-y) + 4);
+    --pz: calc((var(--base-h) + var(--cpf-z)) / 2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(8, 6, 12, .9);
+    border: 3px solid var(--accent);
+    border-radius: 999px;
+    color: color-mix(in srgb, var(--accent), #fff 25%);
+    font-family: var(--mono);
+    font-size: calc(var(--h) * 1px * .38);
+    font-weight: 700;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 180ms ease-out;
+}
+
+.cab .plate:hover, .cab .plate:focus-visible { color: #fff; border-color: var(--accent); }
+
+.cab .ui a:hover, .cab .ui a:focus-visible { color: #fff; outline: none; }
+
+/* Curvature is optical, not geometric: real bulge means splitting the screen
+   into strips, which breaks the preview and brings back faceting. Rounded
+   corners, a rim vignette and a convex glare read as a tube for nothing. */
+.cab .screen::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    background-image:
+        radial-gradient(ellipse 90% 62% at 26% 18%, rgba(242, 228, 207, .15), transparent 62%),
+        radial-gradient(ellipse 116% 116% at 50% 50%, transparent 52%, rgba(0, 0, 0, .5) 88%, rgba(0, 0, 0, .8) 100%),
+        repeating-linear-gradient(rgba(0, 0, 0, .4) 0 2px, transparent 2px 5px);
+    box-shadow: inset 0 0 22px 6px rgba(0, 0, 0, .8);
+}
+
+/* --------------------------------------------------------------------------
+   Controls
+   -------------------------------------------------------------------------- */
+.cab .disc { --w: 64; --h: 64; }
+.cab .btn-hole {
+    --k: .056875; --face: #0B0710; --rx: 90;
+    background-image: radial-gradient(circle closest-side, #0B0710 94%, transparent 100%);
+    background-color: transparent;
+}
+.cab .btn-cap  { --k: .04375;  --face: var(--accent); --rx: 90; --pz: 1;
+    background-image:
+        radial-gradient(circle at 38% 32%, color-mix(in srgb, var(--accent), #fff 45%), transparent 58%),
+        radial-gradient(circle closest-side, var(--accent) 82%, color-mix(in srgb, var(--accent), #000 38%) 94%, transparent 100%);
+    background-color: transparent;
+    box-shadow: 0 3px 0 color-mix(in srgb, var(--accent), #000 55%), 0 0 8px -1px var(--accent);
+}
+
+/* Two rows of three, in the front half of a 38cm panel. */
+.cab .b1 { --px: 4.2;  --py: 7.67; }
+.cab .b2 { --px: 14;   --py: 7.67; }
+.cab .b3 { --px: 23.8; --py: 7.67; }
+.cab .b4 { --px: 6.3;  --py: -.77; }
+.cab .b5 { --px: 16.1; --py: -.77; }
+.cab .b6 { --px: 25.9; --py: -.77; }
+
+.cab .stick { --x: -18.2; --y: 4.22; --z: 0; }
+.cab .stick-base { --w: 64; --h: 64; --k: .11; --rx: 90; --face: #0B0710;
+    background-color: transparent;
+    background-image: radial-gradient(circle closest-side, #0B0710 92%, transparent 100%);
+}
+
+/* Cylinder, anchored at the centre of its base. Each segment is tangent to
+   the circle at its centre, so its edges bow outward and it spans only
+   atan((w/2)/r) of arc — chord and arc-length widths both leave a gap. tan is
+   the width that closes it; the 2% is overlap against subpixel rounding.
+   Smooth shading interpolates each facet between the lighting at its two edge
+   angles, so neighbours match exactly at the seam and it reads as round. */
+.cab .shaft { --r: .7; --len: 6; --seg: 6; --face: #8A8A94; }
+
+.cab .shaft i {
+    position: absolute;
+    top: 50%; left: 50%;
+    --a: calc(360deg / var(--seg) * var(--i));
+    --a0: calc(var(--a) - 180deg / var(--seg));
+    --a1: calc(var(--a) + 180deg / var(--seg));
+    width: calc(2.04 * var(--r) * 1px * tan(180deg / var(--seg)));
+    height: calc(var(--len) * 1px);
+    background-image: linear-gradient(90deg,
+        color-mix(in srgb, var(--face), #000 calc(42% - 34% * cos(var(--a0)))),
+        color-mix(in srgb, var(--face), #000 calc(42% - 34% * cos(var(--a1)))));
+    transform:
+        translate3d(calc(-50% + var(--r) * 1px * sin(var(--a))), calc(-50% - var(--len) * .5px), calc(var(--r) * 1px * cos(var(--a))))
+        rotateY(var(--a));
+}
+
+.cab .shaft i:nth-child(1) { --i: 0; }
+.cab .shaft i:nth-child(2) { --i: 1; }
+.cab .shaft i:nth-child(3) { --i: 2; }
+.cab .shaft i:nth-child(4) { --i: 3; }
+.cab .shaft i:nth-child(5) { --i: 4; }
+.cab .shaft i:nth-child(6) { --i: 5; }
+
+/* A camera-facing disc standing in for a sphere: a real one is a stack of
+   latitude rings, forty-odd divs, and still reads as a stack of rings. Laid
+   out at 128 and scaled down — at its true 4.4px the border-radius is already
+   a visible polygon before perspective magnifies it.
+
+   The key light is held still in the world while the disc tracks the camera:
+   the disc is counter-rotated flat to the screen, so its own X axis IS screen
+   X, and a world direction at azimuth A lands at screen-x proportional to
+   sin(A + yaw). Offsetting the highlight by exactly that stops the light
+   orbiting with your head, which is what gives a billboard away. */
+.cab .ball {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 128px; height: 128px;
+    border-radius: 50%;
+    --la: calc(var(--l0-a) + var(--bb, 0) * 1deg + var(--yaw) * 1deg);
+    background-image: radial-gradient(circle at calc(50% + 26% * sin(var(--la))) 28%,
+        color-mix(in srgb, var(--accent), #fff 62%) 0%,
+        color-mix(in srgb, var(--accent), #fff 22%) 14%,
+        var(--accent) 40%,
+        color-mix(in srgb, var(--accent), #000 44%) 74%,
+        color-mix(in srgb, var(--accent), #000 60%) 93%,
+        transparent 100%);
+    box-shadow: inset 0 0 15px -5px rgba(0, 0, 0, .5);
+    transform:
+        translate3d(-50%, calc(-50% - 8.2px), 0)
+        rotateY(calc((var(--yaw) + var(--bb, 0)) * -1deg))
+        rotateX(calc(var(--pitch) * -1deg))
+        scale(.034375);
+}
+
+/* --------------------------------------------------------------------------
+   Interaction
+
+   Transparent planes covering the whole front, standing proud of the control
+   box so nothing on the cabinet shadows them. Two of them: one walks you
+   here, one plays — :target decides which accepts pointer events.
+   -------------------------------------------------------------------------- */
+.cab .hit { --w: var(--W); --h: var(--H); --pz: calc(var(--H) / 2); background: none; border: 0; }
+.cab .hit-view { --py: calc(var(--cpf-y) + 2); }
+.cab .hit-play { --py: calc(var(--cpf-y) + 3); pointer-events: none; }
+
+/* Raise lightness and chroma, hold the hue. Mixing toward white cannot do
+   this — white has no chroma, so any amount of it desaturates, which is why a
+   visible lift looked washed out and a hue-safe one was invisible. */
+.cab:hover, .cab:focus-within { --accent: oklch(from var(--hue) calc(l + .14) calc(c * 1.12) h); }
+
+/* --------------------------------------------------------------------------
+   Views. The camera cuts are written as literal transforms; see the note at
+   the top for why they are not property transitions.
+   -------------------------------------------------------------------------- */
+.world,
+#view-lobby:target ~ .viewport .world {
+    --p-x: 0; --p-y: -70; --p-z: 165; --yaw: 0; --pitch: -9;
+    transform: translateZ(700px) rotateX(-9deg) rotateY(0deg) translate3d(0px, 165px, 70px);
+}
+#view-polyrhythm:target ~ .viewport .world {
+    --p-x: -62; --p-y: -153; --p-z: 150; --yaw: -22; --pitch: -8;
+    transform: translateZ(700px) rotateX(-8deg) rotateY(-22deg) translate3d(62px, 150px, 153px);
+}
+#view-ringbreaker:target ~ .viewport .world {
+    --p-x: 0; --p-y: -165; --p-z: 150; --yaw: 0; --pitch: -8;
+    transform: translateZ(700px) rotateX(-8deg) rotateY(0deg) translate3d(0px, 150px, 165px);
+}
+#view-sail:target ~ .viewport .world {
+    --p-x: 62; --p-y: -153; --p-z: 150; --yaw: 22; --pitch: -8;
+    transform: translateZ(700px) rotateX(-8deg) rotateY(22deg) translate3d(-62px, 150px, 153px);
+}
+
+#view-polyrhythm:target ~ .viewport .cab-polyrhythm .hit-view,
+#view-ringbreaker:target ~ .viewport .cab-ringbreaker .hit-view,
+#view-sail:target ~ .viewport .cab-sail .hit-view { pointer-events: none; }
+
+#view-polyrhythm:target ~ .viewport .cab-polyrhythm .hit-play,
+#view-ringbreaker:target ~ .viewport .cab-ringbreaker .hit-play,
+#view-sail:target ~ .viewport .cab-sail .hit-play { pointer-events: auto; }
+
+#view-polyrhythm:target ~ .viewport .cab-polyrhythm .tube iframe,
+#view-ringbreaker:target ~ .viewport .cab-ringbreaker .tube iframe,
+#view-sail:target ~ .viewport .cab-sail .tube iframe { content-visibility: visible; }
+
+#view-polyrhythm:target ~ .viewport .cab-polyrhythm .ui,
+#view-ringbreaker:target ~ .viewport .cab-ringbreaker .ui,
+#view-sail:target ~ .viewport .cab-sail .ui { background: rgba(5, 4, 10, .55); }
+
+#view-polyrhythm:target ~ .viewport .cab-polyrhythm :is(.ui, .plate),
+#view-ringbreaker:target ~ .viewport .cab-ringbreaker :is(.ui, .plate),
+#view-sail:target ~ .viewport .cab-sail :is(.ui, .plate) { opacity: 1; pointer-events: auto; }
+
+.target { position: absolute; width: 0; height: 0; }
+
+/* --------------------------------------------------------------------------
+   Entering a game
+
+   A cross-document view transition, so the tube morphs into the game page
+   itself rather than the page fading in behind it. Same name on both
+   documents pairs them; the browser animates the screen's rect out to the
+   full viewport and cross-fades the contents across.
+
+   Needs no JavaScript and degrades to a plain navigation where the browser
+   doesn't support it — which is the whole reason to use it rather than
+   animating and then navigating by hand.
+
+   Only the focused cabinet is named: a view-transition-name has to be unique
+   in the document, and all three screens carrying it would void the lot.
+   -------------------------------------------------------------------------- */
+@view-transition { navigation: auto; }
+
+#view-polyrhythm:target ~ .viewport .cab-polyrhythm .tube,
+#view-ringbreaker:target ~ .viewport .cab-ringbreaker .tube,
+#view-sail:target ~ .viewport .cab-sail .tube { view-transition-name: tube; }
+
+::view-transition-group(tube) {
+    animation-duration: 640ms;
+    animation-timing-function: cubic-bezier(.42, 0, .18, 1);
+}
+
+/* The room falls away faster than the screen grows, so the tube leads. */
+::view-transition-group(root) {
+    animation-duration: 380ms;
+    animation-timing-function: ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(*) { animation: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .world { transition: none; }
+    .cab .tube iframe { transition: none; }
+}
+
+/* Dev only, behind ?fly. It writes the camera as inline styles, which beat
+   every rule above — so the waypoints cannot work while it runs. */
+.fly-hint {
+    position: fixed;
+    top: 14px; left: 16px;
+    z-index: 40;
+    color: #9df;
+    font: 600 11px/1.6 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    pointer-events: none;
+}

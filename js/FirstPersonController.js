@@ -18,7 +18,7 @@ export class FirstPersonController {
         this.stickRight = { active: false, id: null, startX: 0, startY: 0, vectorX: 0, vectorY: 0 };
 
         // Elements
-        this.worldElement = document.querySelector('.fpc-world');
+        this.worldElement = document.querySelector('.world');
         this.gridElement = document.querySelector('.primitive-grid');
         this.fpsElement = document.getElementById('fps-counter');
         

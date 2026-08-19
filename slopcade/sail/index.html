@@ -84,5 +84,29 @@
 </div>
 <div id="fail">This needs WebGL2.<br>Try the latest Chrome, Edge, Firefox, or Safari.</div>
 <script type="module" src="js/main.js"></script>
+
+<!-- Back to the arcade. Added by the site; not part of the game. -->
+<style>
+/* Paired with the cabinet's screen on /slopcade/ — the tube morphs into this
+   page instead of it fading in behind. See slopcade/arcade.css. */
+@view-transition{navigation:auto}
+html{view-transition-name:tube}
+::view-transition-group(tube){animation-duration:640ms;
+  animation-timing-function:cubic-bezier(.42,0,.18,1)}
+@media (prefers-reduced-motion:reduce){::view-transition-group(*){animation:none}}
+.slopcade-back{position:fixed;z-index:9999;
+  left:calc(env(safe-area-inset-left) + 14px);
+  bottom:calc(env(safe-area-inset-bottom) + 14px);
+  font:600 11px/1 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  letter-spacing:.16em;text-transform:uppercase;text-decoration:none;
+  color:#F2E4CF;background:rgba(8,6,12,.72);
+  border:1px solid rgba(242,228,207,.18);border-radius:999px;padding:9px 14px;
+  opacity:.5;transition:opacity .18s,color .18s,border-color .18s}
+.slopcade-back:hover,.slopcade-back:focus-visible{
+  opacity:1;color:#FF9E3D;border-color:#FF9E3D;outline:none}
+.slopcade-back{bottom:calc(env(safe-area-inset-bottom) + 14px)}
+body.touch .slopcade-back{bottom:calc(env(safe-area-inset-bottom) + 96px)}
+</style>
+<a class="slopcade-back" href="/slopcade/">&lsaquo; Arcade</a>
 </body>
 </html>

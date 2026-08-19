@@ -1,0 +1,110 @@
+/* Shared tokens. The arcade pulls from the same set so the site reads as
+   one thing. */
+:root {
+    --void:  #120A18;
+    --void2: #1D0F24;
+    --bone:  #F2E4CF;
+    --ember: #FF9E3D;
+    --coral: #FF6B4A;
+    --dim:   rgba(242, 228, 207, .42);
+    --line:  rgba(242, 228, 207, .16);
+
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    min-height: 100%;
+    margin: 0;
+    background: var(--void);
+    color: var(--bone);
+    font-family: var(--mono);
+    -webkit-tap-highlight-color: transparent;
+}
+
+body {
+    background: radial-gradient(circle at 50% 12%, var(--void2), var(--void) 68%);
+}
+
+.home {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 14vh 22px 64px;
+}
+
+h1 {
+    font-size: clamp(30px, 7vw, 54px);
+    letter-spacing: .14em;
+    font-weight: 600;
+    margin: 0 0 10px;
+}
+
+.tag {
+    margin: 0;
+    font-size: 11px;
+    letter-spacing: .32em;
+    text-transform: uppercase;
+    color: var(--ember);
+}
+
+.intro {
+    margin: 42px 0 0;
+    font-size: 14px;
+    line-height: 1.75;
+    color: var(--dim);
+}
+
+.links {
+    display: grid;
+    gap: 14px;
+    margin-top: 48px;
+}
+
+.link {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 16px 18px;
+    text-decoration: none;
+    color: var(--bone);
+    background: rgba(242, 228, 207, .04);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    transition: border-color .18s, transform .18s, box-shadow .18s;
+}
+
+.link:hover,
+.link:focus-visible {
+    border-color: var(--ember);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 40px -18px var(--ember);
+    outline: none;
+}
+
+.link-name {
+    font-size: 16px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+.link-desc {
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+footer {
+    margin-top: 64px;
+    font-size: 10px;
+    letter-spacing: .24em;
+    text-transform: uppercase;
+    color: var(--dim);
+}
+
+:focus-visible { outline: 2px solid var(--ember); outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+    .link { transition: none; }
+}

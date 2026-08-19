@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>SLOPCADE</title>
+<link rel="stylesheet" href="/slopcade/arcade.css">
+</head>
+<body>
+
+<!-- Waypoints. Siblings of .viewport so a plain ~ combinator reaches it. -->
+<i class="target" id="view-lobby"></i>
+<i class="target" id="view-polyrhythm"></i>
+<i class="target" id="view-ringbreaker"></i>
+<i class="target" id="view-sail"></i>
+
+<div class="viewport">
+  <div class="world">
+
+    <div class="grp lit room">
+      <i class="f floor"></i>
+      <i class="f wall"></i>
+    </div>
+
+  <div class="grp lit cab cab-polyrhythm"
+       style="--x:-124; --y:-306; --rot:22; --bb:22; --hue:#B07BFF">
+
+    <i class="f side side-l rim"></i><i class="f side side-l skin"></i><i class="f side side-l skin-i"></i>
+    <i class="f side side-r rim"></i><i class="f side side-r skin"></i><i class="f side side-r skin-i"></i>
+    <i class="f panel back"></i><i class="f panel top"></i>
+    <i class="f panel kick"></i><i class="f panel apron"></i><i class="f panel under"></i>
+    <i class="f hood"></i>
+
+    <div class="f screen">
+      <span class="tube" style="--shot:url(/slopcade/polyrhythm/preview.jpg)"><iframe src="/slopcade/polyrhythm/" title="Polyrhythm preview"
+        style="--pw:480" tabindex="-1" aria-hidden="true" scrolling="no"></iframe></span>
+      <span class="ui">
+        <a class="play" href="/slopcade/polyrhythm/">&#9654; Play</a>
+      </span>
+    </div>
+
+    <b class="f panel marquee" style="--chars:10">Polyrhythm</b>
+
+    <div class="grp cp">
+      <i class="f cp-face"></i>
+      <div class="grp stick">
+        <i class="f round stick-base"></i>
+        <div class="grp shaft"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <i class="ball"></i>
+      </div>
+      <i class="f round disc btn-hole b1"></i><b class="f round disc btn-cap b1"></b>
+      <i class="f round disc btn-hole b2"></i><b class="f round disc btn-cap b2"></b>
+      <i class="f round disc btn-hole b3"></i><b class="f round disc btn-cap b3"></b>
+      <i class="f round disc btn-hole b4"></i><b class="f round disc btn-cap b4"></b>
+      <i class="f round disc btn-hole b5"></i><b class="f round disc btn-cap b5"></b>
+      <i class="f round disc btn-hole b6"></i><b class="f round disc btn-cap b6"></b>
+    </div>
+
+    <a class="f hit hit-view" href="#view-polyrhythm" aria-label="Step up to Polyrhythm"></a>
+    <a class="f plate" href="#view-lobby">&lsaquo; Arcade</a>
+    <a class="f hit hit-play" href="/slopcade/polyrhythm/" aria-label="Play Polyrhythm"></a>
+  </div>
+
+  <div class="grp lit cab cab-ringbreaker"
+       style="--x:0; --y:-330; --rot:0; --bb:0; --hue:#FF6B4A">
+
+    <i class="f side side-l rim"></i><i class="f side side-l skin"></i><i class="f side side-l skin-i"></i>
+    <i class="f side side-r rim"></i><i class="f side side-r skin"></i><i class="f side side-r skin-i"></i>
+    <i class="f panel back"></i><i class="f panel top"></i>
+    <i class="f panel kick"></i><i class="f panel apron"></i><i class="f panel under"></i>
+    <i class="f hood"></i>
+
+    <div class="f screen">
+      <span class="tube" style="--shot:url(/slopcade/ringbreaker/preview.jpg)"><iframe src="/slopcade/ringbreaker/" title="Ringbreaker preview"
+        style="--pw:480" tabindex="-1" aria-hidden="true" scrolling="no"></iframe></span>
+      <span class="ui">
+        <a class="play" href="/slopcade/ringbreaker/">&#9654; Play</a>
+      </span>
+    </div>
+
+    <b class="f panel marquee" style="--chars:11">Ringbreaker</b>
+
+    <div class="grp cp">
+      <i class="f cp-face"></i>
+      <div class="grp stick">
+        <i class="f round stick-base"></i>
+        <div class="grp shaft"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <i class="ball"></i>
+      </div>
+      <i class="f round disc btn-hole b1"></i><b class="f round disc btn-cap b1"></b>
+      <i class="f round disc btn-hole b2"></i><b class="f round disc btn-cap b2"></b>
+      <i class="f round disc btn-hole b3"></i><b class="f round disc btn-cap b3"></b>
+      <i class="f round disc btn-hole b4"></i><b class="f round disc btn-cap b4"></b>
+      <i class="f round disc btn-hole b5"></i><b class="f round disc btn-cap b5"></b>
+      <i class="f round disc btn-hole b6"></i><b class="f round disc btn-cap b6"></b>
+    </div>
+
+    <a class="f hit hit-view" href="#view-ringbreaker" aria-label="Step up to Ringbreaker"></a>
+    <a class="f plate" href="#view-lobby">&lsaquo; Arcade</a>
+    <a class="f hit hit-play" href="/slopcade/ringbreaker/" aria-label="Play Ringbreaker"></a>
+  </div>
+
+  <div class="grp lit cab cab-sail"
+       style="--x:124; --y:-306; --rot:-22; --bb:-22; --hue:#3FD0C9">
+
+    <i class="f side side-l rim"></i><i class="f side side-l skin"></i><i class="f side side-l skin-i"></i>
+    <i class="f side side-r rim"></i><i class="f side side-r skin"></i><i class="f side side-r skin-i"></i>
+    <i class="f panel back"></i><i class="f panel top"></i>
+    <i class="f panel kick"></i><i class="f panel apron"></i><i class="f panel under"></i>
+    <i class="f hood"></i>
+
+    <div class="f screen">
+      <span class="tube" style="--shot:url(/slopcade/sail/preview.jpg)"><iframe src="/slopcade/sail/" title="Sail preview"
+        style="--pw:480" tabindex="-1" aria-hidden="true" scrolling="no"></iframe></span>
+      <span class="ui">
+        <a class="play" href="/slopcade/sail/">&#9654; Play</a>
+      </span>
+    </div>
+
+    <b class="f panel marquee" style="--chars:4">Sail</b>
+
+    <div class="grp cp">
+      <i class="f cp-face"></i>
+      <div class="grp stick">
+        <i class="f round stick-base"></i>
+        <div class="grp shaft"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <i class="ball"></i>
+      </div>
+      <i class="f round disc btn-hole b1"></i><b class="f round disc btn-cap b1"></b>
+      <i class="f round disc btn-hole b2"></i><b class="f round disc btn-cap b2"></b>
+      <i class="f round disc btn-hole b3"></i><b class="f round disc btn-cap b3"></b>
+      <i class="f round disc btn-hole b4"></i><b class="f round disc btn-cap b4"></b>
+      <i class="f round disc btn-hole b5"></i><b class="f round disc btn-cap b5"></b>
+      <i class="f round disc btn-hole b6"></i><b class="f round disc btn-cap b6"></b>
+    </div>
+
+    <a class="f hit hit-view" href="#view-sail" aria-label="Step up to Sail"></a>
+    <a class="f plate" href="#view-lobby">&lsaquo; Arcade</a>
+    <a class="f hit hit-play" href="/slopcade/sail/" aria-label="Play Sail"></a>
+  </div>
+
+  </div>
+</div>
+
+<!-- Authoring tool only, behind ?fly. It writes the camera as inline styles,
+     which beat every stylesheet rule, so the waypoints cannot work while it
+     runs. Visitors get no JavaScript at all. -->
+<script type="module">
+  if (new URLSearchParams(location.search).has('fly')) {
+    const hint = document.createElement('div');
+    hint.className = 'fly-hint';
+    hint.textContent = 'fly mode — WASD move · space jump · click to look';
+    document.body.append(hint);
+    const { FirstPersonController } = await import('/js/FirstPersonController.js');
+    new FirstPersonController();
+  }
+</script>
+
+</body>
+</html>
